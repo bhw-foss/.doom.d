@@ -1,4 +1,4 @@
-;; [[file:../../project-maria/dotemacs.org::*Emacs Configuration][Emacs Configuration:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Emacs Configuration][Emacs Configuration:1]]
 ;;; $DOOMDIR/config.el -*- lexical-binding: t; -*-
 ;;---------------------------------------------------------------------------
 (defconst +project-maria-dir+ (expand-file-name "~/project-maria/")
@@ -46,17 +46,21 @@
 (transient-mark-mode 1)
 ;; Emacs Configuration:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Completion Module Config][Completion Module Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Completion Module Config][Completion Module Config:1]]
 ;;---------------------------------------------------------------------------
 (after! vertico
   (map! :map vertico-map
         "C-d" #'vertico-quick-jump))
 
+(setq completion-ignore-case t
+      read-file-name-completion-ignore-case t
+      read-buffer-completion-ignore-case t)
+
 (map! :n ";" #'consult-line
       :leader "SPC" #'consult-buffer)
 ;; Completion Module Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Consult Config][Consult Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Consult Config][Consult Config:1]]
 ;;---------------------------------------------------------------------------
 (after! consult
   (require 'org-node)
@@ -160,10 +164,16 @@
                                  bhw/consult-source-project-maria
                                  bhw/consult-source-filesystem
                                  ;; bhw/consult-source-emacs-commands
-                                 )))
+                                 ))
+
+  ;; Perl split routes plain input to the async source only, leaving sync sources unfiltered.
+  (advice-add 'consult-buffer :around
+              (lambda (orig &rest args)
+                (let ((consult-async-split-style 'none))
+                  (apply orig args)))))
 ;; Consult Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*User Interface Config][User Interface Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*User Interface Config][User Interface Config:1]]
 ;;---------------------------------------------------------------------------
 (dotimes (i 10)
   (define-key doom-leader-map (number-to-string i)
@@ -191,12 +201,12 @@
   (remove-hook '+dashboard-functions fn))
 ;; User Interface Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Modus Flexoki Config][Modus Flexoki Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Modus Flexoki Config][Modus Flexoki Config:1]]
 (use-package! modus-flexoki
   :defer t)
 ;; Modus Flexoki Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Editor Config][Editor Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Editor Config][Editor Config:1]]
 ;;---------------------------------------------------------------------------
 (+global-word-wrap-mode +1)
 (dolist (pair '(([?\(] . [?\[]) ([?\[] . [?\(])
@@ -218,11 +228,11 @@
       +word-wrap-extra-indent nil)
 ;; Editor Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Emacs Config][Emacs Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Emacs Config][Emacs Config:1]]
 
 ;; Emacs Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Dired Config][Dired Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Dired Config][Dired Config:1]]
 ;;---------------------------------------------------------------------------
 (map! :after dirvish                    ; Doom overrides Dired with Dirvish.
       :map dirvish-mode-map
@@ -239,7 +249,7 @@
             (evil-local-set-key 'normal (kbd "e") #'wdired-change-to-wdired-mode)))
 ;; Dired Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*EWW Config][EWW Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*EWW Config][EWW Config:1]]
 ;;---------------------------------------------------------------------------
 (after! eww
   (add-hook! 'eww-after-render-hook #'eww-readable)
@@ -247,7 +257,7 @@
         :n "Y" #'+org/yank-link))
 ;; EWW Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Term Config][Term Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Term Config][Term Config:1]]
 ;;---------------------------------------------------------------------------
 (after! vterm
   (map! :map vterm-mode-map
@@ -255,7 +265,7 @@
         :n ", <escape>" #'vterm-send-escape))
 ;; Term Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Checkers Config][Checkers Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Checkers Config][Checkers Config:1]]
 ;;---------------------------------------------------------------------------
 (setf ispell-alternate-dictionary "/usr/share/hunspell/en_CA.dic")
 ;; Org 9.7+ returns `org-lint' line positions as propertized strings, but
@@ -289,11 +299,11 @@
       :nim "C-s" #'+spell/correct-previous-highlight)
 ;; Checkers Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Tools Config][Tools Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Tools Config][Tools Config:1]]
 ;;---------------------------------------------------------------------------
 ;; Tools Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Pdf-Tools Config][Pdf-Tools Config:2]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Pdf-Tools Config][Pdf-Tools Config:2]]
 ;;---------------------------------------------------------------------------
 ;; Disable evil-collection's pdf bindings so we have full control
 ;; over pdf-view-mode-map (same pattern used for ement below).
@@ -391,7 +401,7 @@
   (pdf-cache-prefetch-minor-mode -1))
 ;; Pdf-Tools Config:2 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Magit Config][Magit Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Magit Config][Magit Config:1]]
 ;;---------------------------------------------------------------------------
 (after! magit
   (map! :map magit-status-mode-map
@@ -407,7 +417,7 @@
         "G" #'evil-goto-line))
 ;; Magit Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Claude Code IDE Config][Claude Code IDE Config:5]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Claude Code IDE Config][Claude Code IDE Config:5]]
 ;;---------------------------------------------------------------------------
 (use-package! claude-code-ide
   :config
@@ -418,13 +428,227 @@
         (call-interactively #'claude-code-ide-toggle-recent)
       (error (call-interactively #'claude-code-ide))))
 
+  ;; Register the 5 built-in Emacs MCP tools (xref-find-references,
+  ;; xref-find-apropos, project-info, imenu-list-symbols, treesit-info)
+  ;; and set `claude-code-ide-enable-mcp-server' to t.
+  (claude-code-ide-emacs-tools-setup)
+
+  ;; --- Custom MCP tools ----------------------------------------------------
+  ;; Editor state
+
+  (defun bhw/claude-mcp-current-buffer-info ()
+    "Return file, mode, point, line, column, region status of the session buffer."
+    (let ((context (claude-code-ide-mcp-server-get-session-context)))
+      (if (not context)
+          "No session context available"
+        (let ((buffer (plist-get context :buffer)))
+          (if (not (and buffer (buffer-live-p buffer)))
+              "No active buffer in session context"
+            (with-current-buffer buffer
+              (format "Buffer: %s\nFile: %s\nMode: %s\nLine: %d\nColumn: %d\nPoint: %d\nRegion active: %s"
+                      (buffer-name)
+                      (or (buffer-file-name) "(no file)")
+                      major-mode
+                      (line-number-at-pos)
+                      (current-column)
+                      (point)
+                      (if (use-region-p) "yes" "no"))))))))
+
+  (defun bhw/claude-mcp-current-selection ()
+    "Return active region text from the session buffer, or a no-region message."
+    (let ((context (claude-code-ide-mcp-server-get-session-context)))
+      (if (not context)
+          "No session context available"
+        (let ((buffer (plist-get context :buffer)))
+          (if (not (and buffer (buffer-live-p buffer)))
+              "No active buffer in session context"
+            (with-current-buffer buffer
+              (if (use-region-p)
+                  (buffer-substring-no-properties (region-beginning) (region-end))
+                "No active region")))))))
+
+  (defun bhw/claude-mcp-list-buffers (&optional include_non_file)
+    "Return open buffers as `name → file' lines.
+With INCLUDE_NON_FILE non-nil, also include non-file user buffers."
+    (let ((lines '()))
+      (dolist (buf (buffer-list))
+        (let ((file (buffer-file-name buf))
+              (name (buffer-name buf)))
+          (cond (file
+                 (push (format "%s → %s" name file) lines))
+                ((and include_non_file
+                      (not (string-prefix-p " " name)))
+                 (push name lines)))))
+      (if lines
+          (string-join (nreverse lines) "\n")
+        "No matching buffers")))
+
+  ;; Org-node (org-mem-entry candidate hash)
+
+  (defun bhw/claude-mcp-org-node-find (query)
+    "Substring-match org-node candidates by QUERY (case-insensitive).
+Returns up to 20 lines of `title | file | id'."
+    (require 'org-node)
+    (org-node-cache-ensure)
+    (let* ((q (downcase (or query "")))
+           (matches '())
+           (count 0))
+      (catch 'done
+        (maphash
+         (lambda (cand entry)
+           (when (string-match-p (regexp-quote q) (downcase cand))
+             (push (format "%s | %s | %s"
+                           (org-mem-entry-title entry)
+                           (org-mem-entry-file entry)
+                           (or (org-mem-entry-id entry) ""))
+                   matches)
+             (cl-incf count)
+             (when (>= count 20) (throw 'done nil))))
+         org-node--candidate<>entry))
+      (if matches
+          (string-join (nreverse matches) "\n")
+        (format "No org-node matches for %S" query))))
+
+  ;; Org agenda / clock
+
+  (defun bhw/claude-mcp-org-agenda-todos (&optional keyword)
+    "List entries in `org-agenda-files' whose todo state is KEYWORD (default TODO)."
+    (require 'org)
+    (let* ((kw (or keyword "TODO"))
+           (results
+            (org-map-entries
+             (lambda ()
+               (let* ((heading (org-get-heading t t t t))
+                      (pri (org-entry-get nil "PRIORITY"))
+                      (dl (org-entry-get nil "DEADLINE"))
+                      (file (buffer-file-name))
+                      (line (line-number-at-pos)))
+                 (format "%s:%d: [#%s] %s%s"
+                         (or file "(buffer)")
+                         line
+                         (or pri "?")
+                         heading
+                         (if dl (format " DEADLINE=%s" dl) ""))))
+             (format "+TODO=\"%s\"" kw)
+             'agenda)))
+      (if results
+          (string-join results "\n")
+        (format "No entries in state %s across agenda files" kw))))
+
+  (defun bhw/claude-mcp-org-clock-status ()
+    "Return current org-clock task with elapsed time, or last history entry."
+    (require 'org-clock)
+    (cond
+     ((org-clocking-p)
+      (let* ((elapsed (float-time (time-since org-clock-start-time)))
+             (h (floor (/ elapsed 3600)))
+             (m (floor (/ (mod elapsed 3600) 60))))
+        (format "Clocked in: %s\nStarted: %s\nElapsed: %dh%02dm"
+                org-clock-current-task
+                (format-time-string "%F %T" org-clock-start-time)
+                h m)))
+     ((and (boundp 'org-clock-history) org-clock-history)
+      (let* ((m (car org-clock-history))
+             (buf (and (markerp m) (marker-buffer m))))
+        (if (buffer-live-p buf)
+            (with-current-buffer buf
+              (save-excursion
+                (goto-char m)
+                (format "No clock running. Last task: %s in %s"
+                        (org-get-heading t t t t)
+                        (or (buffer-file-name) (buffer-name)))))
+          "No clock running. History markers point to dead buffers.")))
+     (t "No clock active and history empty")))
+
+  ;; Citar bibliography
+
+  (defun bhw/claude-mcp-citar-lookup (query)
+    "Substring-match citar bibliography entries by QUERY (case-insensitive).
+Searches citekey, title, and author. Returns up to 20 lines."
+    (require 'citar)
+    (let* ((q (downcase (or query "")))
+           (entries (citar-get-entries))
+           (matches '())
+           (count 0))
+      (catch 'done
+        (maphash
+         (lambda (key entry)
+           (let* ((title (or (cdr (assoc "title" entry)) ""))
+                  (author (or (cdr (assoc "author" entry)) ""))
+                  (year (or (cdr (assoc "year" entry))
+                            (cdr (assoc "date" entry)) "")))
+             (when (or (string-match-p (regexp-quote q) (downcase key))
+                       (string-match-p (regexp-quote q) (downcase title))
+                       (string-match-p (regexp-quote q) (downcase author)))
+               (push (format "@%s | %s | %s | %s" key author year title) matches)
+               (cl-incf count)
+               (when (>= count 20) (throw 'done nil)))))
+         entries))
+      (if matches
+          (string-join (nreverse matches) "\n")
+        (format "No bibliography matches for %S" query))))
+
+  ;; --- Tool registrations --------------------------------------------------
+
+  (claude-code-ide-make-tool
+   :function #'bhw/claude-mcp-current-buffer-info
+   :name "current-buffer-info"
+   :description "Get the user's currently active Emacs buffer: file path, major mode, line, column, point, and whether a region is active. Use this to learn what file/location the user is looking at right now."
+   :args nil)
+
+  (claude-code-ide-make-tool
+   :function #'bhw/claude-mcp-current-selection
+   :name "current-selection"
+   :description "Return the text of the user's active region (selection) in Emacs, or a no-region message. Use this when the user references \"this\" or \"the selection\"."
+   :args nil)
+
+  (claude-code-ide-make-tool
+   :function #'bhw/claude-mcp-list-buffers
+   :name "list-buffers"
+   :description "List the user's currently open Emacs buffers visiting files. Use this to discover what the user has loaded without scanning the filesystem."
+   :args '((:name "include_non_file"
+            :type boolean
+            :description "Also include buffers that are not visiting a file (default false)"
+            :optional t)))
+
+  (claude-code-ide-make-tool
+   :function #'bhw/claude-mcp-org-node-find
+   :name "org-node-find"
+   :description "Search the user's org-node knowledge base for entries matching a substring query (case-insensitive). Returns up to 20 results as `title | file | id'."
+   :args '((:name "query"
+            :type string
+            :description "Substring to match against org-node candidate titles")))
+
+  (claude-code-ide-make-tool
+   :function #'bhw/claude-mcp-org-agenda-todos
+   :name "org-agenda-todos"
+   :description "List TODO-like entries across the user's `org-agenda-files'. Filter by a single todo keyword (TODO, PROJ, APPT, PROG, WAIT, DONE, CXLD). Default is TODO."
+   :args '((:name "keyword"
+            :type string
+            :description "Todo keyword to match. Default: TODO."
+            :optional t)))
+
+  (claude-code-ide-make-tool
+   :function #'bhw/claude-mcp-org-clock-status
+   :name "org-clock-status"
+   :description "Return the user's currently clocked-in org task with elapsed time, or the most recent clock history entry if no clock is running."
+   :args nil)
+
+  (claude-code-ide-make-tool
+   :function #'bhw/claude-mcp-citar-lookup
+   :name "citar-lookup"
+   :description "Search the user's citar bibliography (project-jerome.bib) by substring across citekey, title, and author. Returns up to 20 matches."
+   :args '((:name "query"
+            :type string
+            :description "Substring to match against citekey, title, or author")))
+
   (map! :leader
         (:prefix-map ("d" . "claude-code-ide")
          :desc "claude-code-ide start/toggle window" "SPC" #'bhw/claude-code-ide-start-or-toggle-window
          :desc "claude-code-ide-menu" "m" #'claude-code-ide-menu)))
 ;; Claude Code IDE Config:5 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Lexic Config][Lexic Config:2]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Lexic Config][Lexic Config:2]]
 ;;---------------------------------------------------------------------------
 (use-package! lexic
   :init
@@ -475,7 +699,7 @@
           :priority 6))))
 ;; Lexic Config:2 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Biblio Config][Biblio Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Biblio Config][Biblio Config:1]]
 ;;---------------------------------------------------------------------------
 (use-package! citar
   :config
@@ -495,11 +719,92 @@
         :desc "citar-open" "s SPC" #'citar-open))
 ;; Biblio Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Languages Config][Languages Config:1]]
+;;---------------------------------------------------------------------------
+;; Org Cite + biblatex-chicago (CMOS 17 Notes & Bibliography)
+(after! oc
+  (setf org-cite-global-bibliography
+        (list (concat +project-maria-dir+ "project-jerome.bib"))
+        org-cite-export-processors
+        '((latex biblatex)
+          (t basic))
+        org-cite-insert-processor 'citar
+        org-cite-follow-processor 'citar
+        org-cite-activate-processor 'citar))
+
+(after! ox-latex
+  ;; Per-document opt-in: #+LATEX_CLASS: chicago-nb
+  (add-to-list
+   'org-latex-classes
+   '("chicago-nb"
+     "\\documentclass[12pt]{article}
+[NO-DEFAULT-PACKAGES]
+\\usepackage{graphicx}
+\\usepackage{longtable}
+\\usepackage{wrapfig}
+\\usepackage{rotating}
+\\usepackage[normalem]{ulem}
+\\usepackage{amsmath}
+\\usepackage{amssymb}
+\\usepackage{capt-of}
+\\usepackage[margin=1in]{geometry}
+\\usepackage{setspace}\\doublespacing
+\\usepackage{fontspec}
+\\setmainfont{TeX Gyre Termes}
+\\usepackage{csquotes}
+\\usepackage[notes,backend=biber,babel=other,autolang=hyphen,strict]{biblatex-chicago}
+\\addbibresource{/home/ben/project-maria/project-jerome.bib}
+\\usepackage{hyperref}
+\\makeatletter
+\\let\\@course\\@empty
+\\newcommand{\\course}[1]{\\gdef\\@course{#1}}
+\\renewcommand{\\maketitle}{%
+  \\begin{titlepage}%
+    \\thispagestyle{empty}%
+    \\begin{center}
+      \\vspace*{0.28\\textheight}
+      \\@title\\par
+      \\vspace*{\\stretch{2}}
+      \\@author\\par
+      \\ifx\\@course\\@empty\\else\\vspace{1em}\\@course\\par\\fi
+      \\vspace{1em}\\@date\\par
+      \\vspace*{\\stretch{1}}
+    \\end{center}%
+  \\end{titlepage}}
+\\makeatother
+\\defbibheading{bibliography}[\\bibname]{%
+  \\clearpage
+  \\begin{center}\\textbf{#1}\\end{center}
+  \\markboth{#1}{#1}}
+[NO-PACKAGES]
+[EXTRA]"
+     ("\\section{%s}" . "\\section*{%s}")
+     ("\\subsection{%s}" . "\\subsection*{%s}")
+     ("\\subsubsection{%s}" . "\\subsubsection*{%s}")
+     ("\\paragraph{%s}" . "\\paragraph*{%s}")
+     ("\\subparagraph{%s}" . "\\subparagraph*{%s}")))
+
+  (defun bhw/org-latex-export-to-pdf-chicago-nb (orig-fn &rest args)
+    "Run lualatex+biber when the current org buffer uses LATEX_CLASS chicago-nb.
+The hook variant runs inside the export copy buffer, so a `setq-local'
+there is discarded before `org-latex-compile' reads the variable.
+A dynamic `let' binding here propagates through the whole export pipeline."
+    (if (save-excursion
+          (goto-char (point-min))
+          (re-search-forward
+           "^#\\+LATEX_CLASS:[ \t]+chicago-nb\\b" nil t))
+        (let ((org-latex-pdf-process
+               '("latexmk -f -pdflua -interaction=nonstopmode -output-directory=%o %f"
+                 "latexmk -c -output-directory=%o %f")))
+          (apply orig-fn args))
+      (apply orig-fn args)))
+  (advice-add 'org-latex-export-to-pdf :around
+              #'bhw/org-latex-export-to-pdf-chicago-nb))
+
+;; [[file:../../project-maria/blog/dotemacs.org::*Languages Config][Languages Config:1]]
 ;;---------------------------------------------------------------------------
 ;; Languages Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Common Lisp Config][Common Lisp Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Common Lisp Config][Common Lisp Config:1]]
 ;;---------------------------------------------------------------------------
 (after! sly
   (setq sly-contribs (delq 'sly-quicklisp sly-contribs)))
@@ -516,7 +821,7 @@
               (apply orig-fun args)))
 ;; Common Lisp Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Org Mode Config][Org Mode Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Org Mode Config][Org Mode Config:1]]
 ;;---------------------------------------------------------------------------
 (after! evil-org
   (remove-hook 'org-tab-first-hook #'+org-cycle-only-current-subtree-h))
@@ -551,7 +856,7 @@
         :desc "Agenda" "a" #'ben/default-custom-agenda))
 ;; Org Mode Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Org Agenda Config][Org Agenda Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Org Agenda Config][Org Agenda Config:1]]
 ;;---------------------------------------------------------------------------
 (after! org
   (org-clock-persistence-insinuate)
@@ -915,7 +1220,7 @@ Batches source-buffer lookups to minimize buffer switching."
         :desc "bhw/clock-in" "nc" #'bhw/clock-in))
 ;; Org Agenda Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Org Attach Config][Org Attach Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Org Attach Config][Org Attach Config:1]]
 ;;---------------------------------------------------------------------------
 (defun fuco/org-attach-visit-headline-from-dired ()
   "Go to the headline corresponding to this org-attach directory."
@@ -938,7 +1243,7 @@ Batches source-buffer lookups to minimize buffer switching."
  org-attach-method 'mv)
 ;; Org Attach Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Org Mem Config][Org Mem Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Org Mem Config][Org Mem Config:1]]
 ;;---------------------------------------------------------------------------
 (use-package! org-mem
   :after org
@@ -947,7 +1252,7 @@ Batches source-buffer lookups to minimize buffer switching."
   (org-mem-updater-mode))
 ;; Org Mem Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Org Node Config][Org Node Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Org Node Config][Org Node Config:1]]
 ;;---------------------------------------------------------------------------
 (use-package! org-node
   :init
@@ -964,7 +1269,7 @@ Batches source-buffer lookups to minimize buffer switching."
   )
 ;; Org Node Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Org Noter Config][Org Noter Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Org Noter Config][Org Noter Config:1]]
 ;;---------------------------------------------------------------------------
 (after! org-noter
   (setf org-noter-always-create-frame nil
@@ -1029,7 +1334,7 @@ With prefix argument, fall back to the original `org-noter-insert-precise-note'.
                                   (point-max))))
                  (unless (bolp) (insert "\n"))
                  (insert "\n#+BEGIN_QUOTE\n" selected-text
-                         "\n" (format "[cite:p.%s@%s]" page cite-key)
+                         "\n" (format "[cite:@%s %s]" cite-key page)
                          "\n#+END_QUOTE\n"))
                (when quit-flag
                  (select-frame-set-input-focus (org-noter--session-frame session))
@@ -1037,7 +1342,7 @@ With prefix argument, fall back to the original `org-noter-insert-precise-note'.
                                  (org-noter--session-doc-buffer session))))))))))))
 ;; Org Noter Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Org Transclusion Config][Org Transclusion Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Org Transclusion Config][Org Transclusion Config:1]]
 ;;---------------------------------------------------------------------------
 (use-package! org-transclusion
   :after org
@@ -1046,7 +1351,7 @@ With prefix argument, fall back to the original `org-noter-insert-precise-note'.
         :desc "Toggle Org Transclusion Mode" "t" #'org-transclusion-mode))
 ;; Org Transclusion Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Ob Tangle Sync Config][Ob Tangle Sync Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Ob Tangle Sync Config][Ob Tangle Sync Config:1]]
 ;;---------------------------------------------------------------------------
 (load! "private-packages/ob-tangle-sync.el")
 (setf org-babel-tangle-sync-files
@@ -1054,20 +1359,20 @@ With prefix argument, fall back to the original `org-noter-insert-precise-note'.
 (org-babel-tangle-sync-mode)
 ;; Ob Tangle Sync Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Org Contacts Config][Org Contacts Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Org Contacts Config][Org Contacts Config:1]]
 ;; Require org-contacts to work with mu4e
 (require 'org-contacts)
 (setf org-contacts-files (list (concat +project-maria-dir+ "contacts.org")))
 ;; Org Contacts Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Org Download Config][Org Download Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Org Download Config][Org Download Config:1]]
 (setf org-download-method 'attach
       ;; https://www.reddit.com/r/emacs/comments/1ow0gza/some_tips_for_using_emacs_on_wsl/
       org-download-screenshot-method
       "powershell.exe -Command \"(Get-Clipboard -Format image).Save('$(wslpath -w %s)')\"")
 ;; Org Download Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Ox Publish Config][Ox Publish Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Ox Publish Config][Ox Publish Config:1]]
 ;;---------------------------------------------------------------------------
 (after! ox-publish
   ;; ox-extra's `ignore-headlines' lets us exclude a heading itself from
@@ -1204,11 +1509,11 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
      :description "Ben's personal blog")))
 ;; Ox Publish Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Cdlatex Config][Cdlatex Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Cdlatex Config][Cdlatex Config:1]]
 ;;---------------------------------------------------------------------------
 ;; Cdlatex Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Python Config][Python Config:2]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Python Config][Python Config:2]]
 ;;---------------------------------------------------------------------------
 ;; lsp-mode ships a built-in ty client (ty-ls) at priority -1; promote it
 ;; so it wins over pyright/pylsp when ty is on PATH.
@@ -1216,7 +1521,7 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
   (setf (lsp--client-priority (gethash 'ty-ls lsp-clients)) 1))
 ;; Python Config:2 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Usage][Usage:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Usage][Usage:1]]
 ;;---------------------------------------------------------------------------
 (require 'mu4e-contrib)
 (use-package! mu4e
@@ -1349,7 +1654,7 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
   (add-to-list 'recentf-exclude "/tmp/"))
 ;; Usage:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Consult-Mu Config][Consult-Mu Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Consult-Mu Config][Consult-Mu Config:1]]
 ;;---------------------------------------------------------------------------
 (use-package! consult-mu
   :after (mu4e consult)
@@ -1380,11 +1685,11 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
         consult-mu-compose-use-dired-attachment 'in-dired))
 ;; Consult-Mu Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Application Config][Application Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Application Config][Application Config:1]]
 ;;---------------------------------------------------------------------------
 ;; Application Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Elfeed Config][Elfeed Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Elfeed Config][Elfeed Config:1]]
 ;;---------------------------------------------------------------------------
 (use-package! elfeed
   :init
@@ -1451,7 +1756,7 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
         :n ";"  #'consult-line))
 ;; Elfeed Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Ement Config][Ement Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Ement Config][Ement Config:1]]
 ;;---------------------------------------------------------------------------
 (use-package! ement
   :init
@@ -1576,7 +1881,7 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
         :n "r"          #'ement-notify-reply))
 ;; Ement Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Transmission Config][Transmission Config:2]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Transmission Config][Transmission Config:2]]
 ;;---------------------------------------------------------------------------
 (use-package! transmission
   :after evil-collection
@@ -1594,7 +1899,7 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
           transmission-peers-mode)))
 ;; Transmission Config:2 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Shannon Key Logger Config][Shannon Key Logger Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Shannon Key Logger Config][Shannon Key Logger Config:1]]
 ;;---------------------------------------------------------------------------
 (add-to-list 'load-path "~/.config/emacs/.local/")
 (require 'shannon-max)
@@ -1603,18 +1908,18 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
 (shannon-max-start-logger)
 ;; Shannon Key Logger Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Calendar Config][Calendar Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Calendar Config][Calendar Config:1]]
 ;;---------------------------------------------------------------------------
 (map! :leader
       :desc "gregorian calendar" "og" #'calendar)
 ;; Calendar Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Anki Editor Config][Anki Editor Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Anki Editor Config][Anki Editor Config:1]]
 ;;---------------------------------------------------------------------------
 (require 'anki-editor)
 ;; Anki Editor Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Biome Config][Biome Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Biome Config][Biome Config:1]]
 ;;---------------------------------------------------------------------------
 (use-package! biome
   :config
@@ -1636,7 +1941,7 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
         :desc "biome" "om" #'meteorology-detroit-weather))
 ;; Biome Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Casual Emacs Calc Config][Casual Emacs Calc Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Casual Emacs Calc Config][Casual Emacs Calc Config:1]]
 ;;---------------------------------------------------------------------------
 (use-package! casual-calc
   :config
@@ -1645,7 +1950,7 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
     (keymap-set m "C-o" #'casual-calc-tmenu)))
 ;; Casual Emacs Calc Config:1 ends here
 
-;; [[file:../../project-maria/dotemacs.org::*Emacs Reader Config][Emacs Reader Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Emacs Reader Config][Emacs Reader Config:1]]
 ;;---------------------------------------------------------------------------
 ;; (add-to-list 'load-path "/usr/local/src/emacs-reader/")
 ;; (require 'reader-saveplace)
