@@ -305,10 +305,14 @@
 
 ;; [[file:../../project-maria/blog/dotemacs.org::*Pdf-Tools Config][Pdf-Tools Config:2]]
 ;;---------------------------------------------------------------------------
-;; Disable evil-collection's pdf bindings so we have full control
-;; over pdf-view-mode-map (same pattern used for ement below).
-(after! evil-collection
-  (setf evil-collection-mode-list (delq 'pdf evil-collection-mode-list)))
+;; Disable evil-collection's pdf bindings so we have full control over
+;; pdf-view-mode-map. Must run before `evil-collection-init', so we use
+;; Doom's `+evil-collection-disabled-list' rather than mutating
+;; `evil-collection-mode-list' inside `after!' (which fires too late —
+;; the `eval-after-load 'pdf-view' hook is already registered, and
+;; evil-collection-pdf-setup later tries to bind `sb' under `s', which
+;; we've rebound to `avy-goto-word-or-subword-1').
+(add-to-list '+evil-collection-disabled-list 'pdf)
 
 (map! :after pdf-tools
       :map pdf-view-mode-map
@@ -927,7 +931,6 @@ A dynamic `let' binding here propagates through the whole export pipeline."
      ("DONE" :foreground "SpringGreen3" :weight bold)
      ("APPT" :foreground "tomato3" :weight bold)
      ("CXLD" :foreground "sienna" :weight bold))
-   org-enforce-todo-dependencies t
    org-agenda-dim-blocked-tasks t
    org-habit-graph-column 80
    org-agenda-skip-scheduled-if-deadline-is-shown t
@@ -937,6 +940,7 @@ A dynamic `let' binding here propagates through the whole export pipeline."
    org-agenda-todo-ignore-scheduled 'future
    org-agenda-todo-ignore-deadlines t
    org-deadline-warning-days 7
+   org-enforce-todo-dependencies nil
    ;; 6) Adding New Tasks Quickly with Org Capture
    ;; Capture templates for: TODO tasks, Notes, appointments, phone calls, meetings, and org-protocol
    ;; \n is newline in the template. Functions as RET would in insert mode
@@ -1807,9 +1811,10 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
                             (url-hexify-string (ement-room-id room))
                             (url-hexify-string (ement-event-id latest-event)))
                     :method 'post
-                    :then (lambda (_)
-                            (message "Read receipt confirmed for %s"
-                                     (ement-room-display-name room)))
+                    :then (apply-partially
+                           (lambda (name _)
+                             (message "Read receipt confirmed for %s" name))
+                           (ement-room-display-name room))
                     :else (lambda (plz-error)
                             (message "Error marking read: %s" plz-error)))))))))
       (if (> count 0)
@@ -1830,8 +1835,10 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
 
   (map! :after ement-room
         :map ement-room-mode-map
-        :n "RET"   #'ement-room-send-message
-        :n "M-RET" #'ement-room-compose-message
+        :n "RET"        #'ement-room-send-message
+        :n "<return>"   #'ement-room-send-message
+        :n "M-RET"      #'ement-room-compose-message
+        :n "<M-return>" #'ement-room-compose-message
         :n "s"     #'avy-goto-word-or-subword-1
         :n "r"     #'ement-room-write-reply
         :n "D"     #'ement-room-download-file
@@ -1853,6 +1860,36 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
         ement-room-images t
         ement-room-image-thumbnail-height 1
         ement-room-image-thumbnail-height-min 1500)
+
+  ;; Watchdog for silently-stalled syncs. If `ement--sync-callback' errors during
+  ;; event processing, `ement-syncs' has already been cleared but the next
+  ;; long-poll is never started (the call to `ement--auto-sync' is gated behind
+  ;; `ement-sync-callback-hook' running, which it never does on error). Symptom:
+  ;; sent messages reach the server but don't appear in the buffer until you
+  ;; reconnect. The Matrix long-poll has a 30s timeout, so under healthy
+  ;; conditions a callback fires at least that often; if we go noticeably longer,
+  ;; force a fresh sync.
+  (defvar my/ement-sync-watchdog-timer nil)
+  (defvar my/ement-sync-watchdog-seconds 90)
+
+  (defun my/ement-sync-watchdog-fire (session)
+    (setq my/ement-sync-watchdog-timer nil)
+    (when (and ement-auto-sync
+               (memq session (mapcar #'cdr ement-sessions)))
+      (message "Ement: sync watchdog firing; force-resyncing %s"
+               (ement-user-id (ement-session-user session)))
+      (condition-case err
+          (ement--sync session :force t)
+        (error (message "Ement: watchdog force-sync failed: %S" err)))))
+
+  (defun my/ement-sync-watchdog-reset (session)
+    (when (timerp my/ement-sync-watchdog-timer)
+      (cancel-timer my/ement-sync-watchdog-timer))
+    (setq my/ement-sync-watchdog-timer
+          (run-at-time my/ement-sync-watchdog-seconds nil
+                       #'my/ement-sync-watchdog-fire session)))
+
+  (add-hook 'ement-sync-callback-hook #'my/ement-sync-watchdog-reset)
 
   ;; Upstream ement-room-list crashes with (wrong-type-argument number-or-marker-p nil)
   ;; when unread_notifications is present but notification_count or highlight_count is nil.
@@ -1938,7 +1975,7 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
              ("longitude" . ,my/biome-toronto-longitude)
              ("latitude"  . ,my/biome-toronto-latitude)))))
   (map! :leader
-        :desc "biome" "om" #'meteorology-detroit-weather))
+        :desc "biome" "om" #'meteorology-toronto-weather))
 ;; Biome Config:1 ends here
 
 ;; [[file:../../project-maria/blog/dotemacs.org::*Casual Emacs Calc Config][Casual Emacs Calc Config:1]]
