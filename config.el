@@ -1363,6 +1363,12 @@ With prefix argument, fall back to the original `org-noter-insert-precise-note'.
 (org-babel-tangle-sync-mode)
 ;; Ob Tangle Sync Config:1 ends here
 
+;; [[file:../../project-maria/blog/dotemacs.org::*Spreadsheet to Org Config][Spreadsheet to Org Config:1]]
+;;---------------------------------------------------------------------------
+(load! "private-packages/spreadsheet-to-org.el")
+(spreadsheet-to-org-mode +1)
+;; Spreadsheet to Org Config:1 ends here
+
 ;; [[file:../../project-maria/blog/dotemacs.org::*Org Contacts Config][Org Contacts Config:1]]
 ;; Require org-contacts to work with mu4e
 (require 'org-contacts)
@@ -1391,7 +1397,8 @@ With prefix argument, fall back to the original `org-noter-insert-precise-note'.
   (setf org-html-head-include-default-style nil
         org-html-htmlize-output-type 'css
         org-export-global-macros
-        '(("timestamp" . "@@html:<span class=\"timestamp\">[$1]</span>@@")))
+        '(("timestamp" . "@@html:<span class=\"timestamp\">[$1]</span>@@"))
+        org-export-with-broken-links t)
 
   (defun my/org-sitemap-date-entry-format (entry style project)
     "Format ENTRY in org-publish PROJECT Sitemap with a date prefix."

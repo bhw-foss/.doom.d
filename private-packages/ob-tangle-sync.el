@@ -35,6 +35,73 @@
 (require 'org-element)
 (require 'ob-core)
 
+;; --- Upstream bug fix ------------------------------------------------------
+;; `org-babel-tangle-jump-to-org' (ob-tangle.el) delimits a tangled block by
+;; searching *backward* from the block body for its "[[file:...][Name:N]]"
+;; comment.  Its inner search sets END unconditionally, so a literal Org
+;; bracket-link appearing INSIDE a code body -- e.g. a "[[file:%s][%s]]"
+;; format string -- is wrongly accepted as the delimiter.  END then collapses
+;; onto that line, the (< start mid end) bounds test fails, and detangle/sync
+;; signals "Not in tangled code".  This override only accepts a link whose
+;; matching " ... ends here" marker is actually found.  Remove if fixed
+;; upstream.
+(defun org-babel-tangle-sync--jump-to-org ()
+  "Jump from a tangled code file to the related Org mode file.
+Drop-in replacement for `org-babel-tangle-jump-to-org' that ignores stray
+\"[[...]]\" links occurring inside a code body."
+  (interactive)
+  (let ((mid (point))
+        start body-start end target-buffer target-char link block-name body)
+    (save-window-excursion
+      (save-excursion
+        (while (and (re-search-backward org-link-bracket-re nil t)
+                    (not ; ever wider searches until matching block comments
+                     (and (setq start (line-beginning-position))
+                          (setq body-start (line-beginning-position 2))
+                          (setq link (match-string 0))
+                          (setq block-name (match-string 2))
+                          (save-excursion
+                            (save-match-data
+                              (and (re-search-forward
+                                    (concat " " (regexp-quote block-name)
+                                            " ends here")
+                                    nil t)
+                                   (setq end (line-beginning-position)))))))))
+        (unless (and start (< start mid) (< mid end))
+          (error "Not in tangled code"))
+        (setq body (buffer-substring body-start end)))
+      ;; Go to the beginning of the relative block in Org file.
+      (let (org-link-search-must-match-exact-headline)
+        (org-link-open-from-string link))
+      (setq target-buffer (current-buffer))
+      (if (string-match "[^ \t\n\r]:\\([[:digit:]]+\\)" block-name)
+          (let ((n (string-to-number (match-string 1 block-name))))
+            (if (org-before-first-heading-p) (goto-char (point-min))
+              (org-back-to-heading t))
+            (cond ((or (org-at-heading-p)
+                       (not (org-element-type-p (org-element-at-point) 'src-block)))
+                   (org-babel-next-src-block n))
+                  ((= n 1))
+                  (t (org-babel-next-src-block (1- n)))))
+        (org-babel-goto-named-src-block block-name))
+      (goto-char (org-babel-where-is-src-block-head))
+      (forward-line 1)
+      ;; Try to preserve location of point within the source code.
+      (let ((offset (- mid body-start))
+            (block-ends-here (org-with-point-at (org-element-end (org-element-at-point))
+                               (skip-chars-backward " \t\n\r")
+                               (forward-line 0)
+                               (point))))
+        (when (> block-ends-here (+ offset (point)))
+          (forward-char offset)))
+      (setq target-char (point)))
+    (org-src-switch-to-buffer target-buffer t)
+    (goto-char target-char)
+    body))
+
+(advice-add 'org-babel-tangle-jump-to-org :override
+            #'org-babel-tangle-sync--jump-to-org)
+
 (defgroup org-babel-tangle-sync nil
   "Options for synchronizing source code and code blocks."
   :tag "Org Babel Tangle sync"
