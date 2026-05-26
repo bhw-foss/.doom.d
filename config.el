@@ -1369,6 +1369,12 @@ With prefix argument, fall back to the original `org-noter-insert-precise-note'.
 (spreadsheet-to-org-mode +1)
 ;; Spreadsheet to Org Config:1 ends here
 
+;;---------------------------------------------------------------------------
+;; Document (.docx/.odt) to Org: RET on a Word/OpenDocument file in dired
+;; writes a sibling .org file and visits it.
+(load! "private-packages/document-to-org.el")
+(document-to-org-mode +1)
+
 ;; [[file:../../project-maria/blog/dotemacs.org::*Org Contacts Config][Org Contacts Config:1]]
 ;; Require org-contacts to work with mu4e
 (require 'org-contacts)
