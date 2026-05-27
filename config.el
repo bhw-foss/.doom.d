@@ -1363,17 +1363,11 @@ With prefix argument, fall back to the original `org-noter-insert-precise-note'.
 (org-babel-tangle-sync-mode)
 ;; Ob Tangle Sync Config:1 ends here
 
-;; [[file:../../project-maria/blog/dotemacs.org::*Spreadsheet to Org Config][Spreadsheet to Org Config:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Office to Org Config][Office to Org Config:1]]
 ;;---------------------------------------------------------------------------
-(load! "private-packages/spreadsheet-to-org.el")
-(spreadsheet-to-org-mode +1)
-;; Spreadsheet to Org Config:1 ends here
-
-;;---------------------------------------------------------------------------
-;; Document (.docx/.odt) to Org: RET on a Word/OpenDocument file in dired
-;; writes a sibling .org file and visits it.
-(load! "private-packages/document-to-org.el")
-(document-to-org-mode +1)
+(load! "private-packages/office-to-org.el")
+(office-to-org-mode +1)
+;; Office to Org Config:1 ends here
 
 ;; [[file:../../project-maria/blog/dotemacs.org::*Org Contacts Config][Org Contacts Config:1]]
 ;; Require org-contacts to work with mu4e
