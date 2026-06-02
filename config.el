@@ -37,7 +37,7 @@
 (advice-add #'save-buffers-kill-emacs :around #'site/always-save-advice)
 
 (setf org-directory +project-maria-dir+
-      auto-save-interval 1000
+      auto-save-interval 300
       auto-revert-interval 30
       auto-save-timeout nil
       browse-url-generic-program  "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"
@@ -201,6 +201,23 @@
   (remove-hook '+dashboard-functions fn))
 ;; User Interface Config:1 ends here
 
+;; [[file:../../project-maria/blog/dotemacs.org::*Smooth Scrolling Config][Smooth Scrolling Config:1]]
+;;---------------------------------------------------------------------------
+;; Pixel-level smooth scrolling for the mouse wheel / trackpad (Emacs 29+,
+;; native — no external package). `interpolate-page' also smooths
+;; `scroll-up/down-command' (C-v / M-v, evil C-f / C-b).
+(pixel-scroll-precision-mode 1)
+(setf pixel-scroll-precision-interpolate-page t
+      pixel-scroll-precision-use-momentum t)
+
+;; Keyboard-driven scrolling: keep point off the window edge and scroll one
+;; line at a time instead of recentering with a jump.
+(setf scroll-margin 3
+      scroll-conservatively 101
+      scroll-preserve-screen-position t
+      auto-window-vscroll nil)
+;; Smooth Scrolling Config:1 ends here
+
 ;; [[file:../../project-maria/blog/dotemacs.org::*Modus Flexoki Config][Modus Flexoki Config:1]]
 (use-package! modus-flexoki
   :defer t)
@@ -259,10 +276,87 @@
 
 ;; [[file:../../project-maria/blog/dotemacs.org::*Term Config][Term Config:1]]
 ;;---------------------------------------------------------------------------
-(after! vterm
-  (map! :map vterm-mode-map
-        :n "S" #'vterm-send-C-r
-        :n ", <escape>" #'vterm-send-escape))
+;; Project/workspace-scoped popup terminal, ported from Doom's :term vterm
+;; module (+vterm/toggle, +vterm/here) and this config's vterm keybindings.
+(defun +ghostel--configure-project-root-and-display (arg display-fn)
+  "Set PROOT and display a ghostel terminal via DISPLAY-FN.
+With prefix ARG non-nil, root at `default-directory' instead of project root."
+  (let* ((project-root (or (doom-project-root) default-directory))
+         (default-directory (if arg default-directory project-root)))
+    (setenv "PROOT" project-root)
+    (funcall display-fn)))
+
+(defun +ghostel/toggle (arg)
+  "Toggle a project-root ghostel terminal popup (persp-scoped).
+With prefix ARG, recreate the buffer rooted at the current project."
+  (interactive "P")
+  (+ghostel--configure-project-root-and-display
+   arg
+   (lambda ()
+     (let* ((bname (format "*doom:ghostel-popup:%s*"
+                           (if (bound-and-true-p persp-mode)
+                               (safe-persp-name (get-current-persp))
+                             "main")))
+            (ghostel-buffer-name bname))   ; ghostel keys identity off this var
+       (when arg
+         (when-let* ((buf (get-buffer bname))) (kill-buffer buf))
+         (when-let* ((win (get-buffer-window bname))) (delete-window win)))
+       (if-let* ((win (get-buffer-window bname)))
+           (delete-window win)             ; visible -> hide
+         (ghostel))))))                    ; else create/switch; popup rule places it
+
+(defun +ghostel/here (arg)
+  "Open a ghostel terminal in the current window at project root.
+With prefix ARG, root at `default-directory' instead."
+  (interactive "P")
+  (+ghostel--configure-project-root-and-display
+   arg
+   (lambda ()
+     (let (display-buffer-alist)           ; bypass popup rules -> current window
+       (ghostel)))))
+
+(use-package! ghostel
+  :commands (ghostel ghostel-project +ghostel/toggle +ghostel/here)
+  :hook ((ghostel-mode . mode-line-invisible-mode)      ; modeline useless in a term
+         (ghostel-mode . doom-disable-line-numbers-h))
+  :init
+  (map! :leader
+        :desc "Toggle ghostel popup" "ot" #'+ghostel/toggle
+        :desc "Open ghostel here"    "oT" #'+ghostel/here)
+  :config
+  (set-popup-rule! "^\\*doom:ghostel-popup:"
+    :size 0.25 :vslot -4 :select t :quit nil :ttl 0)
+  (setq ghostel-module-auto-install 'download   ; prebuilt binary, no toolchain
+        ;; Keep the native module outside straight's tree so `doom sync'/upgrades
+        ;; don't delete it and force a re-download (cf. vterm's elpa-dir caveat).
+        ghostel-module-directory (expand-file-name "ghostel/" doom-data-dir)
+        ;; Stable buffer names (no OSC-title renaming) so the popup rule + toggle
+        ;; window lookup stay reliable; mirrors prior vterm behavior.
+        ghostel-set-title-function nil
+        ghostel-kill-buffer-on-exit t          ; was vterm-kill-buffer-on-exit t
+        ghostel-query-before-killing nil)      ; ~ confirm-kill-processes nil
+  ;; ghostel-max-scrollback default is 5MB (~ vterm's 5000 lines); left as default.
+  ;; Color theming: ghostel's 16 `ghostel-color-*' ANSI faces inherit from
+  ;; `ansi-color-*', and `ghostel-default' from `default', so ef-owl (via its
+  ;; modus-themes base) already supplies the palette — no hardcoded hexes needed.
+  ;; `ghostel-sync-theme' only runs on demand, so re-apply it to live terminals
+  ;; whenever the theme (re)loads. `doom-load-theme-hook' covers both startup and
+  ;; interactive switches (ef-themes-toggle/select funnel through `load-theme').
+  (add-hook 'doom-load-theme-hook #'ghostel-sync-theme)
+  (map! :map ghostel-mode-map
+        "C-q" #'ghostel-send-next-key                          ; was vterm-send-next-key
+        :n "0"  (cmd! (ghostel-send-key "a" "ctrl"))           ; was +vterm/beginning-of-line
+        :n "dd" (cmd! (ghostel-send-key "e" "ctrl")
+                      (ghostel-send-key "u" "ctrl"))           ; was +vterm/delete-line
+        :n "S"  (cmd! (ghostel-send-key "r" "ctrl"))           ; was vterm-send-C-r
+        :n ", <escape>" (cmd! (ghostel-send-key "escape")))    ; was vterm-send-escape
+  (setq-hook! 'ghostel-mode-hook
+    hscroll-margin 0))                          ; prevent premature horizontal scroll
+
+(use-package! evil-ghostel
+  :when (modulep! :editor evil)
+  :after ghostel
+  :hook (ghostel-mode . evil-ghostel-mode))     ; syncs terminal cursor w/ evil state
 ;; Term Config:1 ends here
 
 ;; [[file:../../project-maria/blog/dotemacs.org::*Checkers Config][Checkers Config:1]]
@@ -425,6 +519,10 @@
 ;;---------------------------------------------------------------------------
 (use-package! claude-code-ide
   :config
+  ;; Use the ghostel terminal backend (installed below) instead of the
+  ;; default 'vterm, whose native module isn't compiled in this setup.
+  (setq claude-code-ide-terminal-backend 'ghostel)
+
   (defun bhw/claude-code-ide-start-or-toggle-window ()
     "Start claude-code-ide if needed; otherwise toggle the chat window."
     (interactive)

@@ -21,6 +21,8 @@
 (package! claude-code-ide
   :recipe (:host github :repo "manzaltu/claude-code-ide.el"))
 (package! sly-quicklisp :disable t)
+(package! ghostel)
+(package! evil-ghostel)
 ;; (package! mu4e-send-delay
 ;;   :recipe (:host github :repo "krisbalintona/mu4e-send-delay"))
 ;; (package! greader)

@@ -33,9 +33,6 @@
  undo
  vc
 
- :term
- vterm
-
  :checkers
  syntax
  (spell +hunspell)
