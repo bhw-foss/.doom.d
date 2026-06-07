@@ -71,33 +71,25 @@
       :category file
       :face     consult-file
       :history  file-name-history
-      ;; Synchronously fetch the file list using fd.
-      ;; NOTE: pass "~/" as an explicit path argument — without it, fd uses CWD
-      ;; implicitly and the global ignore file (~/.config/fd/ignore) is not
-      ;; applied, so Trash and other excluded dirs leak through.
-      :items    ,(lambda ()
-                   (when (executable-find "fdfind")
-                     (let ((home (expand-file-name "~")))
-                       ;; fd requires an explicit pattern before the path:
-                       ;;   fdfind [opts] . /home/ben
-                       ;; A bare path (no leading pattern) is parsed as the
-                       ;; pattern and errors.  Without an explicit path fd
-                       ;; uses CWD implicitly, which bypasses the global
-                       ;; ignore file (~/.config/fd/ignore), causing Trash
-                       ;; and other excluded dirs to appear.
-                       ;; fd returns absolute paths when given an absolute
-                       ;; search root, so strip the prefix before re-adding ~/
-                       (mapcar (lambda (file)
-                                 (concat "~/" (string-remove-prefix (concat home "/") file)))
-                               (ignore-errors
-                                 (process-lines "fdfind"
-                                                "--follow"
-                                                "--type" "f"
-                                                "--hidden"
-                                                "--exclude" ".git"
-                                                "--color" "never"
-                                                "." home))))))
-      :action   ,#'consult--file-action))
+      :action   ,#'consult--file-action
+      :state    ,#'consult--file-preview
+      ;; Async: `fd' filters by the typed input, so nothing is materialized until
+      ;; you type >= `consult-async-min-input' (default 3) chars.  Replaces the old
+      ;; synchronous `:items' that walked all of ~/ (94k files, ~1.4s/open, ~1.0s
+      ;; of it GC).  `fd' still honors the global ignore file (~/.config/fd/ignore),
+      ;; so Trash etc. stay excluded.  The `let' bakes our flags into the builder
+      ;; closure WITHOUT mutating the global `consult-fd-args' (so plain
+      ;; `M-x consult-fd' is unaffected).  `--search-path' yields absolute paths;
+      ;; `abbreviate-file-name' restores the ~/ display of the old source.
+      :async
+      ,(let ((consult-fd-args
+              '((if (executable-find "fdfind" 'remote) "fdfind" "fd")
+                "--full-path --color=never --hidden --follow --type f --exclude .git")))
+         (consult--process-collection
+             (consult--fd-make-builder (list (expand-file-name "~")))
+           :transform (consult--async-map #'abbreviate-file-name)
+           :highlight t
+           :file-handler t))))
 
   (defvar bhw/consult-source-project-maria
     `(:name     "Project-Maria rg"
