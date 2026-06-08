@@ -73,13 +73,12 @@
       :history  file-name-history
       :action   ,#'consult--file-action
       :state    ,#'consult--file-preview
-      ;; Async: `fd' filters by the typed input, so nothing is materialized until
-      ;; you type >= `consult-async-min-input' (default 3) chars.  Replaces the old
-      ;; synchronous `:items' that walked all of ~/ (94k files, ~1.4s/open, ~1.0s
-      ;; of it GC).  `fd' still honors the global ignore file (~/.config/fd/ignore),
-      ;; so Trash etc. stay excluded.  The `let' bakes our flags into the builder
-      ;; closure WITHOUT mutating the global `consult-fd-args' (so plain
-      ;; `M-x consult-fd' is unaffected).  `--search-path' yields absolute paths;
+      ;; Async: `fd' filters by the typed input, so nothing is materialized
+      ;; until you type >= `consult-async-min-input' (default 3) chars. `fd'
+      ;; still honors the global ignore file (~/.config/fd/ignore), so Trash
+      ;; etc. stay excluded. The `let' bakes our flags into the builder closure
+      ;; WITHOUT mutating the global `consult-fd-args' (so plain `M-x
+      ;; consult-fd' is unaffected). `--search-path' yields absolute paths;
       ;; `abbreviate-file-name' restores the ~/ display of the old source.
       :async
       ,(let ((consult-fd-args
@@ -99,28 +98,40 @@
       :state    ,#'consult--grep-state
       :action   ,(lambda (c) (consult--jump (consult--grep-position c)))
       :async
-      ,(consult--process-collection
-           (consult--ripgrep-make-builder
-            (list (expand-file-name "~/project-maria")))
-         :transform
-         (consult--grep-format
-          (consult--ripgrep-make-builder
-           (list (expand-file-name "~/project-maria"))))
-         :file-handler t)))
+      ,(let ((builder (consult--ripgrep-make-builder (list +project-maria-dir+))))
+         (consult--process-collection builder
+           :transform (consult--grep-format builder)
+           :file-handler t))))
 
-  ;; (defvar bhw/consult-source-emacs-commands
-  ;;   (list :name "Emacs Commands"
-  ;;         :narrow ?e
-  ;;         :category 'command
-  ;;         :items (lambda ()
-  ;;                  (let ((cmds))
-  ;;                    (mapatoms (lambda (elt)
-  ;;                                (when (commandp elt)
-  ;;                                  (push (symbol-name elt) cmds))))
-  ;;                    cmds))
-  ;;         :action (lambda (cmd-str)
-  ;;                   (command-execute (intern-soft cmd-str))))
-  ;;   "A simple consult source for Emacs commands.")
+  ;; `mapatoms' over the full obarray (~128k symbols) building ~13k command-name
+  ;; strings costs ~85ms and triggers GC on EVERY consult-buffer open.  The
+  ;; command set is effectively static between `load's, so cache the list and
+  ;; invalidate it only when new code is loaded (rare after startup) via a
+  ;; *named* `after-load-functions' hook (named so `doom/reload' re-adds it
+  ;; idempotently instead of leaking duplicate anonymous closures).
+  (defvar bhw/consult--emacs-commands-cache nil
+    "Cached list of command-name strings for `bhw/consult-source-emacs-commands'.")
+
+  (defun bhw/consult--emacs-commands ()
+    "Return all command names as strings, rebuilding the cache on demand."
+    (or bhw/consult--emacs-commands-cache
+        (setq bhw/consult--emacs-commands-cache
+              (let (cmds)
+                (mapatoms (lambda (s) (when (commandp s) (push (symbol-name s) cmds))))
+                cmds))))
+
+  (defun bhw/consult--invalidate-emacs-commands-cache (&rest _)
+    "Drop the cached Emacs-commands list so it is rebuilt after new code loads."
+    (setq bhw/consult--emacs-commands-cache nil))
+  (add-hook 'after-load-functions #'bhw/consult--invalidate-emacs-commands-cache)
+
+  (defvar bhw/consult-source-emacs-commands
+    (list :name     "Emacs Commands"
+          :narrow   ?e
+          :category 'command
+          :items    #'bhw/consult--emacs-commands
+          :action   (lambda (cmd-str) (command-execute (intern-soft cmd-str))))
+    "Source for Emacs commands, used in `consult-buffer'.")
 
   (defvar org-node-history nil
     "History list for org-node selections in `consult-buffer'. The `:history 'org-node-history` property in `bhw/consult-source-org-node` tells `consult` to record selections into the variable `org-node-history`. But that variable was never declared with `defvar`, so it was void. When `consult--multi` tried to call `(add-to-history org-node-history \"Ecclesiastes 3:1\")`, Emacs raised a `void-variable` error.")
@@ -155,8 +166,7 @@
                                  bhw/consult-source-org-node
                                  bhw/consult-source-project-maria
                                  bhw/consult-source-filesystem
-                                 ;; bhw/consult-source-emacs-commands
-                                 ))
+                                 bhw/consult-source-emacs-commands))
 
   ;; Perl split routes plain input to the async source only, leaving sync sources unfiltered.
   (advice-add 'consult-buffer :around
@@ -760,7 +770,6 @@ Searches citekey, title, and author. Returns up to 20 lines."
         "q"   #'lexic-return-from-lexic
         "RET" #'lexic-search-word-at-point
         "a"   #'outline-show-all
-        "h"   #'outline-hide-body
         "o"   #'lexic-toggle-entry
         "d"   #'lexic-next-entry
         "u"   #'lexic-previous-entry
@@ -947,7 +956,7 @@ A dynamic `let' binding here propagates through the whole export pipeline."
             (insert description)))))
 
   (map! :leader
-        :desc "Agenda" "a" #'ben/default-custom-agenda))
+        :desc "Agenda" "a" #'bhw/default-custom-agenda))
 ;; Org Mode Config:1 ends here
 
 ;; [[file:../../project-maria/blog/dotemacs.org::*Org Agenda Config][Org Agenda Config:1]]
@@ -957,7 +966,7 @@ A dynamic `let' binding here propagates through the whole export pipeline."
 
   (load! "private-packages/org-agenda-find-free-time.el")
 
-  (defun my-org-mode-ask-effort ()
+  (defun bhw/org-mode-ask-effort ()
     "Ask for an effort estimate when clocking in if none exists."
     (unless (org-entry-get (point) "Effort")
       (let ((effort
@@ -967,7 +976,7 @@ A dynamic `let' binding here propagates through the whole export pipeline."
         (unless (equal effort "")
           (org-set-property "Effort" effort)))))
 
-  (add-hook 'org-clock-in-prepare-hook #'my-org-mode-ask-effort)
+  (add-hook 'org-clock-in-prepare-hook #'bhw/org-mode-ask-effort)
 
   (defun bhw/clock-in ()
     "Smart clock-in/out command.
@@ -991,17 +1000,14 @@ A dynamic `let' binding here propagates through the whole export pipeline."
       ;; No running clock — select from history.
       (org-clock-in '(4))))
 
-  (defun bh/verify-refile-target ()
+  (defun bhw/verify-refile-target ()
     "Exclude todo keywords with a done state from refile targets"
     (not (member (nth 2 (org-heading-components)) org-done-keywords)))
 
   ;; Press t to change task todo state
   (setf
    org-agenda-files
-   (cl-loop for agenda-file in
-            '("hq.org")
-            collect
-            (concat +project-maria-dir+ agenda-file))
+   (list (concat +project-maria-dir+ "hq.org"))
    inhibit-compacting-font-caches t
    org-agenda-start-day "+0d"
    org-use-fast-todo-selection t
@@ -1036,12 +1042,12 @@ A dynamic `let' binding here propagates through the whole export pipeline."
    ;; \n is newline in the template. Functions as RET would in insert mode
    ;; placing a backslash before " in TRIGGER below to have the string not end
    org-capture-templates
-   '(("t" "Todo Task" entry (file+headline "~/project-maria/hq.org" "Inbox") "* TODO [#C] %?\n:PROPERTIES:\n:EFFORT:   %^{0:00|0:10|0:30|1:00|1:30|2:00|2:30|3:00}\n:ASSIGNED: %U\n:END:\n" :empty-lines 1)
-     ("a" "Appointment" entry (file+headline "~/project-maria/hq.org" "Inbox") "* APPT %?\nSCHEDULED: %^T\n:PROPERTIES:\n:LOCATION: %^{LOCATION|TBD}\n:EFFORT:   %^{0:00|0:10|0:30|1:00|1:30|2:00|2:30|3:00}\n:ASSIGNED: %U\n:END:\n" :empty-lines 1)
-     ("j" "Journal Entry" entry (file+headline "~/project-maria/hq.org" "Inbox")"* TODO [#C] JOURNAL ENTRY %<Y%YW%V%B%d>\n:PROPERTIES:\n:EFFORT: 0:10\n:ASSIGNED: %U\n:END:\n%?" :empty-lines 1)
-     ("h" "Habit" entry (file+headline "~/project-maria/hq.org" "Inbox")"* TODO %?\nSCHEDULED: %(format-time-string \"%\")\n:PROPERTIES:\n:STYLE: habit\n:REPEAT_TO_STATE: TODO\n:ASSIGNED: %U\n:END:" :empty-lines 1)
-     ("c" "Contacts" entry (file "~/project-maria/contacts.org") "* %(org-contacts-template-name)\n:PROPERTIES:\n:PHONE: %?\n:EMAIL:\n:ADDRESS:\n:BIRTHDAY:\n:NOTE: Added on: %U\n:END:" :empty-lines 1)
-     ("p" "Project" entry (file "~/project-maria/hq.org") "* PROJ %? [/] [%] %^G\n:PROPERTIES:\n:ASSIGNED: %U\n:CATEGORY: %^{CATEGORY|Misc.}\n:END:\n** TODO [#C]\n:PROPERTIES:\n:EFFORT:%^{0:00|0:10|0:30|1:00|1:30|2:00|2:30|3:00}\n:ASSIGNED: %U\n:END:\n" :empty-lines 1))
+   `(("t" "Todo Task" entry (file+headline ,(concat +project-maria-dir+ "hq.org") "Inbox") "* TODO [#C] %?\n:PROPERTIES:\n:EFFORT:   %^{0:00|0:10|0:30|1:00|1:30|2:00|2:30|3:00}\n:ASSIGNED: %U\n:END:\n" :empty-lines 1)
+     ("a" "Appointment" entry (file+headline ,(concat +project-maria-dir+ "hq.org") "Inbox") "* APPT %?\nSCHEDULED: %^T\n:PROPERTIES:\n:LOCATION: %^{LOCATION|TBD}\n:EFFORT:   %^{0:00|0:10|0:30|1:00|1:30|2:00|2:30|3:00}\n:ASSIGNED: %U\n:END:\n" :empty-lines 1)
+     ("j" "Journal Entry" entry (file+headline ,(concat +project-maria-dir+ "hq.org") "Inbox")"* TODO [#C] JOURNAL ENTRY %<Y%YW%V%B%d>\n:PROPERTIES:\n:EFFORT: 0:10\n:ASSIGNED: %U\n:END:\n%?" :empty-lines 1)
+     ("h" "Habit" entry (file+headline ,(concat +project-maria-dir+ "hq.org") "Inbox")"* TODO %?\nSCHEDULED: %(format-time-string \"%\")\n:PROPERTIES:\n:STYLE: habit\n:REPEAT_TO_STATE: TODO\n:ASSIGNED: %U\n:END:" :empty-lines 1)
+     ("c" "Contacts" entry (file ,(concat +project-maria-dir+ "contacts.org")) "* %(org-contacts-template-name)\n:PROPERTIES:\n:PHONE: %?\n:EMAIL:\n:ADDRESS:\n:BIRTHDAY:\n:NOTE: Added on: %U\n:END:" :empty-lines 1)
+     ("p" "Project" entry (file ,(concat +project-maria-dir+ "hq.org")) "* PROJ %? [/] [%] %^G\n:PROPERTIES:\n:ASSIGNED: %U\n:CATEGORY: %^{CATEGORY|Misc.}\n:END:\n** TODO [#C]\n:PROPERTIES:\n:EFFORT:%^{0:00|0:10|0:30|1:00|1:30|2:00|2:30|3:00}\n:ASSIGNED: %U\n:END:\n" :empty-lines 1))
    ;; **** 9) Clocking
    org-clock-in-switch-to-state "PROG"
    org-clock-out-remove-zero-time-clocks t
@@ -1061,7 +1067,7 @@ A dynamic `let' binding here propagates through the whole export pipeline."
                         (org-agenda-files :maxlevel . 9))
    org-outline-path-complete-in-steps nil
    org-refile-use-outline-path 'file
-   org-refile-target-verify-function 'bh/verify-refile-target
+   org-refile-target-verify-function 'bhw/verify-refile-target
    ;; **** 11) Context Tags with fast selection keys
    org-tag-alist '(;; Sets geo-spatial and context tags
                    ;; Startgroup and endgroup make tags mutually
@@ -1071,9 +1077,10 @@ A dynamic `let' binding here propagates through the whole export pipeline."
                    ("errand" . ?e)
                    ;; (:endgroup)
                    ;; Person(s) can be contexts too.
-                   ("father" . ?d)
-                   ("workteam1" . ?d)
-                   ("docket" . ?d))
+                   ;; ("father" . ?d)
+                   ;; ("workteam1" . ?d)
+                   ;; ("docket" . ?d)
+                   )
    org-fast-tag-selection-single-key 'expert
    org-tags-column 0
    ;; For tag searches ignore tasks with scheduled and deadline dates
@@ -1089,12 +1096,11 @@ A dynamic `let' binding here propagates through the whole export pipeline."
    org-archive-save-context-info '(time category olpath ltags itags)
    org-habit-show-habits t
    ;; To speed up org agenda generation
-   org-agenda-dim-blocked-tasks nil
    org-agenda-inhibit-startup t
    org-agenda-ignore-properties '(ASSIGNED LAST_REPEAT)
    org-agenda-sticky nil)
 
-  (defun my/org-agenda-calculate-efforts (limit)
+  (defun bhw/org-agenda-calculate-efforts (limit)
     "Sum the efforts of scheduled entries up to LIMIT in the agenda buffer."
     (let ((total-minutes 0))
       (save-excursion
@@ -1107,7 +1113,7 @@ A dynamic `let' binding here propagates through the whole export pipeline."
           (forward-line)))
       (org-duration-from-minutes total-minutes)))
 
-  (defun my/org-agenda-insert-efforts ()
+  (defun bhw/org-agenda-insert-efforts ()
     "Insert the efforts for each day inside the agenda buffer."
     (save-excursion
       (let (pos)
@@ -1117,20 +1123,20 @@ A dynamic `let' binding here propagates through the whole export pipeline."
           (end-of-line)
           (insert-and-inherit
            (concat " ("
-                   (my/org-agenda-calculate-efforts
+                   (bhw/org-agenda-calculate-efforts
                     (or (text-property-any
                          (point) (point-max) 'org-agenda-date-header t)
                         (point-max)))
                    ")"))
           (forward-line)))))
 
-  (add-hook 'org-agenda-finalize-hook #'my/org-agenda-insert-efforts)
+  (add-hook 'org-agenda-finalize-hook #'bhw/org-agenda-insert-efforts)
 
-  (defface ben/stale-assigned-face
+  (defface bhw/stale-assigned-face
     '((t :background "#4d3028" :extend t))
     "Face for TODO items assigned over a month ago (Priority C, no schedule/deadline).")
 
-  (defun ben/highlight-stale-assigned-todos ()
+  (defun bhw/highlight-stale-assigned-todos ()
     "Highlight agenda TODO items assigned over a month ago.
 Only applies to Priority C items with no scheduled date or deadline.
 Batches source-buffer lookups to minimize buffer switching."
@@ -1173,18 +1179,18 @@ Batches source-buffer lookups to minimize buffer switching."
                               (time-less-p (org-time-string-to-time assigned-str)
                                            one-month-ago))
                      (let ((ov (make-overlay bol eol agenda-buf)))
-                       (overlay-put ov 'face 'ben/stale-assigned-face)
-                       (overlay-put ov 'ben/stale-assigned t))))))))
+                       (overlay-put ov 'face 'bhw/stale-assigned-face)
+                       (overlay-put ov 'bhw/stale-assigned t))))))))
          by-buffer))))
 
-  (add-hook 'org-agenda-finalize-hook #'ben/highlight-stale-assigned-todos)
+  (add-hook 'org-agenda-finalize-hook #'bhw/highlight-stale-assigned-todos)
 
-  (defun ben/default-custom-agenda()
+  (defun bhw/default-custom-agenda()
     "Functionally call custom agenda command bound to KEY"
     (interactive)
     (org-agenda nil "d"))
 
-  (defun ben/org-capture-set-priority-on-deadline ()
+  (defun bhw/org-capture-set-priority-on-deadline ()
     "Set the priority of an org-capture entry to [#B] if a deadline exists.
                           This function is intended to be used with `org-capture-before-finalize-hook`."
     (save-excursion
@@ -1194,11 +1200,11 @@ Batches source-buffer lookups to minimize buffer switching."
         ;; If a deadline is found, set the priority to 'B'
         (org-priority ?B))))
 
-  (add-hook 'org-capture-before-finalize-hook #'ben/org-capture-set-priority-on-deadline)
+  (add-hook 'org-capture-before-finalize-hook #'bhw/org-capture-set-priority-on-deadline)
 
-  (defun my/org-agenda-deadline-for-prefix ()
-    "Return the deadline relative to today (e.g. 'In 5 d.'), formatted to 9 chars.
-   Returns 9 spaces if no deadline exists."
+  (defun bhw/org-agenda-deadline-for-prefix ()
+    "Return the deadline relative to today (e.g. 'In 5 d.'), formatted to 6 chars.
+   Returns 6 spaces if no deadline exists."
     (let ((deadline-time (org-get-deadline-time (point))))
       (if deadline-time
           (let* ((days (- (org-time-string-to-absolute
@@ -1214,12 +1220,18 @@ Batches source-buffer lookups to minimize buffer switching."
         ;; If no deadline, return 6 spaces to maintain alignment
         (make-string 6 ?\s))))
 
-  (defun my/org-agenda-effort-for-prefix ()
+  (defun bhw/org-agenda-effort-for-prefix ()
     "Return the effort estimate formatted as '[HH:MM] ', or spacers if no effort."
     (let ((effort (org-entry-get (point) "EFFORT")))
       (if effort
           (format "[%-4s] " effort) ;; Result: "[0:30] "
         "       ")))                ;; 7 spaces to match length of "[0:30] "
+
+  (defvar bhw/excluded-course-tags
+    '("-bio1200" "-his2500" "-cla154" "-lat122" "-mus221"
+      "-the249" "-the274" "-phl300" "-the219")
+    "Course tags excluded from the Review agenda's tag filter.
+Prune entries here as courses finish.")
 
   (setf
    org-agenda-block-separator 61
@@ -1258,14 +1270,14 @@ Batches source-buffer lookups to minimize buffer switching."
        (tags "TODO=\"PROG\""
              ((org-agenda-sorting-strategy '(priority-down deadline-up effort-down))
               (org-agenda-prefix-format
-               '((tags . "  %-3:c %(my/org-agenda-deadline-for-prefix)%(my/org-agenda-effort-for-prefix)")))
+               '((tags . "  %-3:c %(bhw/org-agenda-deadline-for-prefix)%(bhw/org-agenda-effort-for-prefix)")))
               (org-agenda-todo-keyword-format "%-3s")
               (org-agenda-overriding-header "\nTasks in Progress\n")))
        (tags "TODO=\"TODO\""
              ((org-agenda-sorting-strategy '(priority-down deadline-up effort-down))
               (org-agenda-todo-ignore-deadlines nil)
               (org-agenda-prefix-format
-               '((tags . "  %-3:c %(my/org-agenda-deadline-for-prefix)%(my/org-agenda-effort-for-prefix)")))
+               '((tags . "  %-3:c %(bhw/org-agenda-deadline-for-prefix)%(bhw/org-agenda-effort-for-prefix)")))
               (org-agenda-todo-keyword-format "%-3s")
               (org-agenda-skip-function '(org-agenda-skip-entry-if 'scheduled))
               (org-agenda-overriding-header "\nTodo List\n")))
@@ -1294,7 +1306,7 @@ Batches source-buffer lookups to minimize buffer switching."
                    (org-agenda-start-on-weekday nil)
                    (org-agenda-entry-types '(:timestamp :sexp :scheduled))
                    (org-agenda-overriding-header "Calendar\n"))))
-      ((org-agenda-tag-filter-preset '("-SDAY" "-bio1200" "-his2500" "-cla154" "-lat122" "-mus221" "-the249" "-the274" "-phl300" "-the219")))))
+      ((org-agenda-tag-filter-preset (append '("-SDAY") bhw/excluded-course-tags)))))
    org-agenda-window-setup 'current-window)
   (map! :after evil-org-agenda
         :map evil-org-agenda-mode-map
@@ -1461,8 +1473,9 @@ With prefix argument, fall back to the original `org-noter-insert-precise-note'.
 
 ;; [[file:../../project-maria/blog/dotemacs.org::*Org Contacts Config][Org Contacts Config:1]]
 ;; Require org-contacts to work with mu4e
-(require 'org-contacts)
-(setf org-contacts-files (list (concat +project-maria-dir+ "contacts.org")))
+(after! org
+  (require 'org-contacts)
+  (setf org-contacts-files (list (concat +project-maria-dir+ "contacts.org"))))
 ;; Org Contacts Config:1 ends here
 
 ;; [[file:../../project-maria/blog/dotemacs.org::*Org Download Config][Org Download Config:1]]
@@ -1490,7 +1503,7 @@ With prefix argument, fall back to the original `org-noter-insert-precise-note'.
         '(("timestamp" . "@@html:<span class=\"timestamp\">[$1]</span>@@"))
         org-export-with-broken-links t)
 
-  (defun my/org-sitemap-date-entry-format (entry style project)
+  (defun bhw/org-sitemap-date-entry-format (entry style project)
     "Format ENTRY in org-publish PROJECT Sitemap with a date prefix."
     (let ((filename (org-publish-find-title entry project)))
       (if (= (length filename) 0)
@@ -1518,7 +1531,7 @@ With prefix argument, fall back to the original `org-noter-insert-precise-note'.
            :sitemap-title "Blog Archive"
            :sitemap-sort-files anti-chronologically
            :sitemap-style tree
-           :sitemap-format-entry my/org-sitemap-date-entry-format
+           :sitemap-format-entry bhw/org-sitemap-date-entry-format
            ;; https://orgmode.org/manual/HTML-doctypes.html#HTML-doctypes
            :html-doctype "html5"
            :html-html5-fancy t
@@ -1567,7 +1580,7 @@ With prefix argument, fall back to the original `org-noter-insert-precise-note'.
                               </footer>")))
 
   ;; https://alhassy.github.io/AlBasmala#Clickable-Headlines
-  (defun my/ensure-headline-ids (&rest _)
+  (defun bhw/ensure-headline-ids (&rest _)
     "Give every Org tree without a CUSTOM_ID a slug derived from its heading.
 Non-alphanumerics collapse to '-'. Duplicate slugs abort with `quit-flag'.
 
@@ -1591,10 +1604,10 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
                  (undo)
                  (setq quit-flag t))
                (org-entry-put nil "CUSTOM_ID" id))))))))
-  (advice-add 'org-html-export-to-html   :before 'my/ensure-headline-ids)
-  (advice-add 'org-md-export-to-markdown :before 'my/ensure-headline-ids)
+  (advice-add 'org-html-export-to-html   :before 'bhw/ensure-headline-ids)
+  (advice-add 'org-md-export-to-markdown :before 'bhw/ensure-headline-ids)
 
-  (defun ben/publish-blog ()
+  (defun bhw/publish-blog ()
     "Publish the blog project and rebuild atom.xml via webfeeder."
     (interactive)
     (org-publish "blog")
@@ -1624,12 +1637,12 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
 
 ;; [[file:../../project-maria/blog/dotemacs.org::*Usage][Usage:1]]
 ;;---------------------------------------------------------------------------
-(require 'mu4e-contrib)
 (use-package! mu4e
   :init
   (map! :leader
         :desc "Email"           "oe" #'mu4e)
   :config
+  (require 'mu4e-contrib)
   ;; https://mu-discuss.narkive.com/hXk7RbcH/set-from-address-depending-on-to-address-header
   (defun mu4e-compose-set-from-address-dwim ()
     "Set the From address based on the To address of the original. Added to
@@ -1644,8 +1657,8 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
         (setq-local user-mail-address
                     (or (seq-find (lambda (addr)
                                     (mu4e-message-contact-field-matches msg :to addr))
-                                  my/mu4e-address-routing)
-                        my/default-mail-address)))))
+                                  bhw/mu4e-address-routing)
+                        bhw/default-mail-address)))))
 
   (evil-set-initial-state 'mu4e-headers-mode 'normal)
   (evil-set-initial-state 'mu4e-view-mode 'normal)
@@ -1658,7 +1671,7 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
                          ("\"maildir:/[Gmail]/All Mail\" and flag:unread" "Unread" 85)
                          ("\"maildir:/[Gmail]/All Mail\"" "All Mail" 97)
                          ("\"maildir:/[Gmail]/Sent Mail\"" "Sent Mail" 115))
-        user-mail-address my/default-mail-address
+        user-mail-address bhw/default-mail-address
         user-full-name "Ben H. W."
         ;; mu4e-compose-signature
         mail-user-agent 'mu4e-user-agent
@@ -1804,7 +1817,7 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
     (mark-whole-buffer)
     (elfeed-search-untag-all-unread))
 
-  (defun ben/elfeed-search-browse-url (&optional use-generic-p)
+  (defun bhw/elfeed-search-browse-url (&optional use-generic-p)
     "Visit the current entry in your browser using `browse-url'.
   If there is a prefix argument, visit the current entry in the
   browser defined by `browse-url-generic-program'."
@@ -1826,7 +1839,7 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
         (unless (or elfeed-search-remain-on-entry (use-region-p))
           (forward-line)))))
 
-  (defhydra ben/hydra-elfeed (:exit t)
+  (defhydra bhw/hydra-elfeed (:exit t)
     ("g" (elfeed-search-set-filter "@6-months-ago +unread +gbl") "Global News")
     ("l" (elfeed-search-set-filter "@6-months-ago +unread +lcl") "Local News")
     ("s" (elfeed-search-set-filter "@6-months-ago +unread +sci") "Science & Tech")
@@ -1845,14 +1858,14 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
         :n "s"  #'avy-goto-word-or-subword-1
         :n "r"  #'elfeed-mark-all-as-read
         :n "S"  #'elfeed-search-live-filter
-        :n "f"  #'ben/hydra-elfeed/body
-        :n "b"  #'ben/elfeed-search-browse-url
+        :n "f"  #'bhw/hydra-elfeed/body
+        :n "b"  #'bhw/elfeed-search-browse-url
         :n "B"  #'elfeed-search-browse-url
         :n "R"  #'elfeed-search-update--force
         :n ";"  #'consult-line
         :map elfeed-show-mode-map
         :n "s"  #'avy-goto-word-or-subword-1
-        :n "b"  #'ben/elfeed-search-browse-url
+        :n "b"  #'bhw/elfeed-search-browse-url
         :n "B"  #'elfeed-search-browse-url
         :n ";"  #'consult-line))
 ;; Elfeed Config:1 ends here
@@ -1869,7 +1882,7 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
   (require 'org)
   (require 'url-util)
 
-  (defun my/ement-schedule-message (time-str message)
+  (defun bhw/ement-schedule-message (time-str message)
     (interactive
      (let ((msg (if (derived-mode-p 'ement-room-compose-mode)
                     (buffer-substring-no-properties (point-min) (point-max))
@@ -1892,7 +1905,7 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
         (erase-buffer)
         (kill-buffer))))
 
-  (defun my/ement-mark-all-read ()
+  (defun bhw/ement-mark-all-read ()
     (interactive)
     (let ((count 0))
       (dolist (session-pair ement-sessions)
@@ -1922,13 +1935,13 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
 
   ;; When closing the notifications buffer, mark everything read.
   ;; We run it on a 0-delay timer so it fires *after* the buffer is gone.
-  (defun my/ement-notifications-run-after-kill ()
+  (defun bhw/ement-notifications-run-after-kill ()
     (when (derived-mode-p 'ement-notifications-mode)
-      (run-at-time 0 nil #'my/ement-mark-all-read)))
+      (run-at-time 0 nil #'bhw/ement-mark-all-read)))
 
   (add-hook 'ement-notifications-mode-hook
             (lambda ()
-              (add-hook 'kill-buffer-hook #'my/ement-notifications-run-after-kill nil t)))
+              (add-hook 'kill-buffer-hook #'bhw/ement-notifications-run-after-kill nil t)))
 
   (map! :after ement-room
         :map ement-room-mode-map
@@ -1966,11 +1979,11 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
   ;; reconnect. The Matrix long-poll has a 30s timeout, so under healthy
   ;; conditions a callback fires at least that often; if we go noticeably longer,
   ;; force a fresh sync.
-  (defvar my/ement-sync-watchdog-timer nil)
-  (defvar my/ement-sync-watchdog-seconds 90)
+  (defvar bhw/ement-sync-watchdog-timer nil)
+  (defvar bhw/ement-sync-watchdog-seconds 90)
 
-  (defun my/ement-sync-watchdog-fire (session)
-    (setq my/ement-sync-watchdog-timer nil)
+  (defun bhw/ement-sync-watchdog-fire (session)
+    (setq bhw/ement-sync-watchdog-timer nil)
     (when (and ement-auto-sync
                (memq session (mapcar #'cdr ement-sessions)))
       (message "Ement: sync watchdog firing; force-resyncing %s"
@@ -1979,14 +1992,14 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
           (ement--sync session :force t)
         (error (message "Ement: watchdog force-sync failed: %S" err)))))
 
-  (defun my/ement-sync-watchdog-reset (session)
-    (when (timerp my/ement-sync-watchdog-timer)
-      (cancel-timer my/ement-sync-watchdog-timer))
-    (setq my/ement-sync-watchdog-timer
-          (run-at-time my/ement-sync-watchdog-seconds nil
-                       #'my/ement-sync-watchdog-fire session)))
+  (defun bhw/ement-sync-watchdog-reset (session)
+    (when (timerp bhw/ement-sync-watchdog-timer)
+      (cancel-timer bhw/ement-sync-watchdog-timer))
+    (setq bhw/ement-sync-watchdog-timer
+          (run-at-time bhw/ement-sync-watchdog-seconds nil
+                       #'bhw/ement-sync-watchdog-fire session)))
 
-  (add-hook 'ement-sync-callback-hook #'my/ement-sync-watchdog-reset)
+  (add-hook 'ement-sync-callback-hook #'bhw/ement-sync-watchdog-reset)
 
   ;; Upstream ement-room-list crashes with (wrong-type-argument number-or-marker-p nil)
   ;; when unread_notifications is present but notification_count or highlight_count is nil.
@@ -2036,10 +2049,15 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
 ;; [[file:../../project-maria/blog/dotemacs.org::*Shannon Key Logger Config][Shannon Key Logger Config:1]]
 ;;---------------------------------------------------------------------------
 (add-to-list 'load-path "~/.config/emacs/.local/")
-(require 'shannon-max)
-(setq shannon-max-jar-file
-      (expand-file-name "~/.config/emacs/.local/target/emacskeys-0.1.0-SNAPSHOT-standalone.jar"))
-(shannon-max-start-logger)
+;; Defer the keylogger (and its Java subprocess) off the startup critical path;
+;; 1s after Emacs goes idle is effectively immediate but doesn't block init.
+(run-with-idle-timer
+ 1 nil
+ (lambda ()
+   (require 'shannon-max)
+   (setq shannon-max-jar-file
+         (expand-file-name "~/.config/emacs/.local/target/emacskeys-0.1.0-SNAPSHOT-standalone.jar"))
+   (shannon-max-start-logger)))
 ;; Shannon Key Logger Config:1 ends here
 
 ;; [[file:../../project-maria/blog/dotemacs.org::*Calendar Config][Calendar Config:1]]
@@ -2050,7 +2068,7 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
 
 ;; [[file:../../project-maria/blog/dotemacs.org::*Anki Editor Config][Anki Editor Config:1]]
 ;;---------------------------------------------------------------------------
-(require 'anki-editor)
+(use-package! anki-editor :defer t)
 ;; Anki Editor Config:1 ends here
 
 ;; [[file:../../project-maria/blog/dotemacs.org::*Biome Config][Biome Config:1]]
@@ -2062,15 +2080,15 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
             (:group . "hourly")
             (:params
              ("hourly" "wind_speed_10m" "cloud_cover" "precipitation" "apparent_temperature")
-             ("longitude" . ,my/biome-detroit-longitude)
-             ("latitude"  . ,my/biome-detroit-latitude)))))
+             ("longitude" . ,bhw/biome-detroit-longitude)
+             ("latitude"  . ,bhw/biome-detroit-latitude)))))
   (eval `(biome-def-preset meteorology-toronto-weather
            ((:name . "GEM (Canada)")
             (:group . "hourly")
             (:params
              ("hourly" "wind_speed_10m" "cloud_cover" "precipitation" "apparent_temperature")
-             ("longitude" . ,my/biome-toronto-longitude)
-             ("latitude"  . ,my/biome-toronto-latitude)))))
+             ("longitude" . ,bhw/biome-toronto-longitude)
+             ("latitude"  . ,bhw/biome-toronto-latitude)))))
   (map! :leader
         :desc "biome" "om" #'meteorology-toronto-weather))
 ;; Biome Config:1 ends here
