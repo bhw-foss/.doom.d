@@ -1,4 +1,4 @@
-;; [[file:../../project-maria/dotemacs.org::*Package Configuration][Package Configuration:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Package Configuration][Package Configuration:1]]
 ;; -*- no-byte-compile: t; -*-
 ;;; $DOOMDIR/packages.el
 

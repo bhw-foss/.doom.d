@@ -1,6 +1,18 @@
 ;; [[file:../../project-maria/blog/dotemacs.org::*Emacs Configuration][Emacs Configuration:1]]
 ;;; $DOOMDIR/config.el -*- lexical-binding: t; -*-
 ;;---------------------------------------------------------------------------
+;; PATH for daemon sessions: Emacs runs as a systemd --user daemon, which does
+;; NOT source ~/.profile or ~/.bashrc, so user bin dirs (e.g. ~/.local/bin,
+;; where the `claude' CLI lives) are absent from PATH/`exec-path'. Prepend them
+;; here so `executable-find' and spawned subprocesses (claude-code-ide, etc.)
+;; can locate these executables.
+(dolist (dir (list (expand-file-name "~/.local/bin")
+                   (expand-file-name "~/.config/emacs/bin")))
+  (when (and (file-directory-p dir)
+             (not (member dir exec-path)))
+    (add-to-list 'exec-path dir)
+    (setenv "PATH" (concat dir path-separator (getenv "PATH")))))
+
 (defconst +project-maria-dir+ (expand-file-name "~/project-maria/")
   "Absolute path to the project-maria directory.")
 (defconst +project-jerome-dir+ (expand-file-name "~/project-jerome/")
@@ -206,11 +218,23 @@
 ;; [[file:../../project-maria/blog/dotemacs.org::*Smooth Scrolling Config][Smooth Scrolling Config:1]]
 ;;---------------------------------------------------------------------------
 ;; Pixel-level smooth scrolling for the mouse wheel / trackpad (Emacs 29+,
-;; native — no external package). `interpolate-page' also smooths
-;; `scroll-up/down-command' (C-v / M-v, evil C-f / C-b).
+;; native — no external package).
+;;
+;; Tuned to prioritize trackpad responsiveness over smoothness (keeping both
+;; where they don't conflict). Interpolation/momentum add perceptible lag under
+;; WSLg, where trackpad gestures arrive as discrete X11 wheel events:
+;;   - no momentum -> scrolling stops the instant you lift; no kinetic drift.
+;;   - no mouse interpolation -> each wheel notch scrolls immediately instead of
+;;     animating over `...-interpolation-total-time'; genuine pixel-precision
+;;     deltas (if the device sends them) are still scrolled smoothly.
+;;   - no progressive speed -> scroll distance stays proportional, no overshoot.
+;; `interpolate-page' stays on: it smooths keyboard `scroll-up/down-command'
+;; (C-v / M-v, evil C-f / C-b), which never touches the trackpad path.
 (pixel-scroll-precision-mode 1)
-(setf pixel-scroll-precision-interpolate-page t
-      pixel-scroll-precision-use-momentum t)
+(setf pixel-scroll-precision-use-momentum nil
+      pixel-scroll-precision-interpolate-mice nil
+      pixel-scroll-precision-interpolate-page t
+      mouse-wheel-progressive-speed nil)
 
 ;; Keyboard-driven scrolling: keep point off the window edge and scroll one
 ;; line at a time instead of recentering with a jump.
@@ -248,7 +272,18 @@
 ;; Editor Config:1 ends here
 
 ;; [[file:../../project-maria/blog/dotemacs.org::*Emacs Config][Emacs Config:1]]
-
+;;---------------------------------------------------------------------------
+;; Re-apply Doom's gcmh tuning that its 2026-06-13 core refactor silently
+;; dropped: it registers gcmh via `use-package! gcmh-mode', but the package
+;; provides the feature `gcmh' (not `gcmh-mode'), so the :config form that sets
+;; `gcmh-high-cons-threshold' to 64mb never runs.  gcmh then keeps its 1GB
+;; upstream default, letting the Lisp heap balloon until every GC is a ~1.3s
+;; freeze that surfaces as GUI input lag.  Keyed on the correct feature; drop
+;; this once Doom fixes the `use-package!' declaration upstream.
+(after! gcmh
+  (setq gcmh-idle-delay 'auto
+        gcmh-auto-idle-delay-factor 10
+        gcmh-high-cons-threshold (* 64 1024 1024))) ; 64mb
 ;; Emacs Config:1 ends here
 
 ;; [[file:../../project-maria/blog/dotemacs.org::*Dired Config][Dired Config:1]]
@@ -822,87 +857,6 @@ Searches citekey, title, and author. Returns up to 20 lines."
         :desc "citar-open" "s SPC" #'citar-open))
 ;; Biblio Config:1 ends here
 
-;;---------------------------------------------------------------------------
-;; Org Cite + biblatex-chicago (CMOS 17 Notes & Bibliography)
-(after! oc
-  (setf org-cite-global-bibliography
-        (list (concat +project-maria-dir+ "project-jerome.bib"))
-        org-cite-export-processors
-        '((latex biblatex)
-          (t basic))
-        org-cite-insert-processor 'citar
-        org-cite-follow-processor 'citar
-        org-cite-activate-processor 'citar))
-
-(after! ox-latex
-  ;; Per-document opt-in: #+LATEX_CLASS: chicago-nb
-  (add-to-list
-   'org-latex-classes
-   '("chicago-nb"
-     "\\documentclass[12pt]{article}
-[NO-DEFAULT-PACKAGES]
-\\usepackage{graphicx}
-\\usepackage{longtable}
-\\usepackage{wrapfig}
-\\usepackage{rotating}
-\\usepackage[normalem]{ulem}
-\\usepackage{amsmath}
-\\usepackage{amssymb}
-\\usepackage{capt-of}
-\\usepackage[margin=1in]{geometry}
-\\usepackage{setspace}\\doublespacing
-\\usepackage{fontspec}
-\\setmainfont{TeX Gyre Termes}
-\\usepackage{csquotes}
-\\usepackage[notes,backend=biber,babel=other,autolang=hyphen,strict]{biblatex-chicago}
-\\addbibresource{/home/ben/project-maria/project-jerome.bib}
-\\usepackage{hyperref}
-\\makeatletter
-\\let\\@course\\@empty
-\\newcommand{\\course}[1]{\\gdef\\@course{#1}}
-\\renewcommand{\\maketitle}{%
-  \\begin{titlepage}%
-    \\thispagestyle{empty}%
-    \\begin{center}
-      \\vspace*{0.28\\textheight}
-      \\@title\\par
-      \\vspace*{\\stretch{2}}
-      \\@author\\par
-      \\ifx\\@course\\@empty\\else\\vspace{1em}\\@course\\par\\fi
-      \\vspace{1em}\\@date\\par
-      \\vspace*{\\stretch{1}}
-    \\end{center}%
-  \\end{titlepage}}
-\\makeatother
-\\defbibheading{bibliography}[\\bibname]{%
-  \\clearpage
-  \\begin{center}\\textbf{#1}\\end{center}
-  \\markboth{#1}{#1}}
-[NO-PACKAGES]
-[EXTRA]"
-     ("\\section{%s}" . "\\section*{%s}")
-     ("\\subsection{%s}" . "\\subsection*{%s}")
-     ("\\subsubsection{%s}" . "\\subsubsection*{%s}")
-     ("\\paragraph{%s}" . "\\paragraph*{%s}")
-     ("\\subparagraph{%s}" . "\\subparagraph*{%s}")))
-
-  (defun bhw/org-latex-export-to-pdf-chicago-nb (orig-fn &rest args)
-    "Run lualatex+biber when the current org buffer uses LATEX_CLASS chicago-nb.
-The hook variant runs inside the export copy buffer, so a `setq-local'
-there is discarded before `org-latex-compile' reads the variable.
-A dynamic `let' binding here propagates through the whole export pipeline."
-    (if (save-excursion
-          (goto-char (point-min))
-          (re-search-forward
-           "^#\\+LATEX_CLASS:[ \t]+chicago-nb\\b" nil t))
-        (let ((org-latex-pdf-process
-               '("latexmk -f -pdflua -interaction=nonstopmode -output-directory=%o %f"
-                 "latexmk -c -output-directory=%o %f")))
-          (apply orig-fn args))
-      (apply orig-fn args)))
-  (advice-add 'org-latex-export-to-pdf :around
-              #'bhw/org-latex-export-to-pdf-chicago-nb))
-
 ;; [[file:../../project-maria/blog/dotemacs.org::*Languages Config][Languages Config:1]]
 ;;---------------------------------------------------------------------------
 ;; Languages Config:1 ends here
@@ -1047,7 +1001,7 @@ A dynamic `let' binding here propagates through the whole export pipeline."
      ("j" "Journal Entry" entry (file+headline ,(concat +project-maria-dir+ "hq.org") "Inbox")"* TODO [#C] JOURNAL ENTRY %<Y%YW%V%B%d>\n:PROPERTIES:\n:EFFORT: 0:10\n:ASSIGNED: %U\n:END:\n%?" :empty-lines 1)
      ("h" "Habit" entry (file+headline ,(concat +project-maria-dir+ "hq.org") "Inbox")"* TODO %?\nSCHEDULED: %(format-time-string \"%\")\n:PROPERTIES:\n:STYLE: habit\n:REPEAT_TO_STATE: TODO\n:ASSIGNED: %U\n:END:" :empty-lines 1)
      ("c" "Contacts" entry (file ,(concat +project-maria-dir+ "contacts.org")) "* %(org-contacts-template-name)\n:PROPERTIES:\n:PHONE: %?\n:EMAIL:\n:ADDRESS:\n:BIRTHDAY:\n:NOTE: Added on: %U\n:END:" :empty-lines 1)
-     ("p" "Project" entry (file ,(concat +project-maria-dir+ "hq.org")) "* PROJ %? [/] [%] %^G\n:PROPERTIES:\n:ASSIGNED: %U\n:CATEGORY: %^{CATEGORY|Misc.}\n:END:\n** TODO [#C]\n:PROPERTIES:\n:EFFORT:%^{0:00|0:10|0:30|1:00|1:30|2:00|2:30|3:00}\n:ASSIGNED: %U\n:END:\n" :empty-lines 1))
+     ("p" "Project" entry (file ,(concat +project-maria-dir+ "hq.org")) "* PROJ %? [/] [%] %^G\n:PROPERTIES:\n:ASSIGNED: %U\n:END:\n** TODO [#C]\n:PROPERTIES:\n:EFFORT: %^{0:00|0:10|0:30|1:00|1:30|2:00|2:30|3:00}\n:ASSIGNED: %U\n:END:\n" :empty-lines 1))
    ;; **** 9) Clocking
    org-clock-in-switch-to-state "PROG"
    org-clock-out-remove-zero-time-clocks t
@@ -1368,6 +1322,24 @@ Prune entries here as courses finish.")
   (org-node-cache-mode)
   (setf org-node-backlink-do-drawers t)
   (org-node-backlink-mode)
+
+  (defun bhw/org-node-ensure-source-id ()
+    "Give the heading at point its own ID when inserting an org-node link.
+Registered on `org-node-insert-link-hook' (point sits in the just-inserted
+link).  `org-node-backlink--add-in-target' resolves the link's origin with
+`org-entry-get-with-inheritance', so without an own ID the backlink lands on
+the nearest ancestor node -- or, if no ancestor has an ID, no backlink is
+written at all.  Creating an ID here makes this heading its own node so the
+target's backlink points back to it precisely."
+    (when (and (derived-mode-p 'org-mode)
+               (buffer-file-name)
+               (not (org-before-first-heading-p)))
+      (save-excursion
+        (org-id-get-create))))
+  ;; Negative depth => runs before `org-node-backlink--add-in-target' (depth 0),
+  ;; so the source ID exists by the time the backlink is written.
+  (add-hook 'org-node-insert-link-hook #'bhw/org-node-ensure-source-id -50)
+
   (map! :map (org-mode-map)
         :localleader
         (:prefix ("l" . "links")
@@ -1721,6 +1693,22 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
         mu4e-search-include-related nil)
 
   (add-hook 'mu4e-compose-pre-hook #'mu4e-compose-set-from-address-dwim)
+
+  ;; Leave the From: header empty for brand-new messages so the sending
+  ;; identity must be chosen explicitly. Replies/forwards/edits keep the
+  ;; From set by `mu4e-compose-set-from-address-dwim' above. Appended (t)
+  ;; so it runs after `org-msg-post-setup', which is also on this hook.
+  (defun bhw/mu4e-empty-from-for-new ()
+    "Empty the From: header in new (`mu4e-compose-type' = `new') buffers."
+    (when (eq mu4e-compose-type 'new)
+      (save-excursion
+        (save-restriction
+          (message-narrow-to-headers)
+          (goto-char (point-min))
+          (when (re-search-forward "^From:.*$" nil t)
+            (replace-match "From:"))))))
+  (add-hook 'mu4e-compose-mode-hook #'bhw/mu4e-empty-from-for-new t)
+
   ;; (add-hook
   ;;  'mu4e-headers-mode-hook
   ;;  (lambda () (define-key evil-motion-state-map (kbd "RET") nil)))

@@ -1,4 +1,4 @@
-;; [[file:../../project-maria/dotemacs.org::*Emacs Initialization][Emacs Initialization:1]]
+;; [[file:../../project-maria/blog/dotemacs.org::*Emacs Initialization][Emacs Initialization:1]]
 ;;; init.el -*- lexical-binding: t; -*-
 (setf evil-respect-visual-line-mode t)
 (doom!
