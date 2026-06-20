@@ -201,8 +201,12 @@
       confirm-kill-emacs nil
       confirm-kill-processes nil)
 
-(after! doom-ui
-  (global-set-key [remap delete-frame] nil))
+;; Doom core remaps `delete-frame' to `doom/delete-frame-with-prompt', which
+;; asks "Close frame?" before closing.  Undo that remap so closing a frame
+;; (SPC q f, C-x 5 0) is immediate.  The remap is installed in doom-emacs.el,
+;; already loaded by the time config.el runs, so this needs no `after!' guard
+;; (the old `after! doom-ui' wrapper never fired -- doom-ui isn't a feature).
+(global-set-key [remap delete-frame] nil)
 
 (add-to-list 'default-frame-alist '(inhibit-double-buffering . t))
 
@@ -280,10 +284,17 @@
 ;; upstream default, letting the Lisp heap balloon until every GC is a ~1.3s
 ;; freeze that surfaces as GUI input lag.  Keyed on the correct feature; drop
 ;; this once Doom fixes the `use-package!' declaration upstream.
+;;
+;; Deviations from Doom's defaults, tuned for long-lived (multi-day) sessions
+;; where each full GC measures ~0.5-0.7s: raise the active threshold to 256mb
+;; so heavy scrolling rarely trips a collection mid-motion, and use a fixed 15s
+;; idle delay (instead of `auto', which fired ~5s after every pause) so the
+;; unavoidable freeze lands when genuinely idle rather than between keystrokes.
+;; NOTE: this only changes GC *timing/frequency*; per-GC duration scales with
+;; heap size, so a periodic Emacs restart remains the real fix for the lag.
 (after! gcmh
-  (setq gcmh-idle-delay 'auto
-        gcmh-auto-idle-delay-factor 10
-        gcmh-high-cons-threshold (* 64 1024 1024))) ; 64mb
+  (setq gcmh-idle-delay 15
+        gcmh-high-cons-threshold (* 256 1024 1024))) ; 256mb
 ;; Emacs Config:1 ends here
 
 ;; [[file:../../project-maria/blog/dotemacs.org::*Dired Config][Dired Config:1]]
@@ -1921,11 +1932,27 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
       (when (derived-mode-p 'ement-room-list-mode)
         (ement-room-list))))
 
-  ;; When closing the notifications buffer, mark everything read.
+  ;; When closing the notifications buffer, mark everything read, then tear the
+  ;; sessions down to keep Ement's heap from growing while idle.  The dominant
+  ;; consumer is `ement-session-events' -- a hash of every event ever seen that
+  ;; is never pruned.  `ement-disconnect' only stops the long-poll sync (capping
+  ;; further growth) and leaves room buffers alive, which keep buffer-local
+  ;; references to the session struct and thus pin that hash; so we also
+  ;; `ement-kill-buffers' to drop the last references and let it be GC'd.
   ;; We run it on a 0-delay timer so it fires *after* the buffer is gone.
   (defun bhw/ement-notifications-run-after-kill ()
     (when (derived-mode-p 'ement-notifications-mode)
-      (run-at-time 0 nil #'bhw/ement-mark-all-read)))
+      (run-at-time 0 nil
+                   (lambda ()
+                     ;; Dispatches read receipts synchronously across
+                     ;; `ement-sessions', so it must run before we clear it.
+                     (bhw/ement-mark-all-read)
+                     (when ement-sessions
+                       ;; The receipt POSTs are now in-flight plz processes,
+                       ;; independent of the sync process, so disconnecting
+                       ;; won't abort them.
+                       (ement-disconnect (mapcar #'cdr ement-sessions))
+                       (ement-kill-buffers))))))
 
   (add-hook 'ement-notifications-mode-hook
             (lambda ()
@@ -1974,8 +2001,16 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
     (setq bhw/ement-sync-watchdog-timer nil)
     (when (and ement-auto-sync
                (memq session (mapcar #'cdr ement-sessions)))
-      (message "Ement: sync watchdog firing; force-resyncing %s"
-               (ement-user-id (ement-session-user session)))
+      ;; (message "Ement: sync watchdog firing; force-resyncing %s"
+      ;;          (ement-user-id (ement-session-user session)))
+      ;; The forced delete-process below SIGKILLs the stalled sync; plz then
+      ;; misreads signal 9 as curl exit 9 ("FTP access denied") and the dead
+      ;; process's :else both signals that error and nulls `ement-syncs' for the
+      ;; new sync. Neutralise its callbacks first so its deferred timer is inert.
+      (when-let ((proc (map-elt ement-syncs session)))
+        (when (process-live-p proc)
+          (process-put proc :plz-then #'ignore)
+          (process-put proc :plz-else #'ignore)))
       (condition-case err
           (ement--sync session :force t)
         (error (message "Ement: watchdog force-sync failed: %S" err)))))
