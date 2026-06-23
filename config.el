@@ -866,6 +866,87 @@ Searches citekey, title, and author. Returns up to 20 lines."
                                                 (directory-files-recursively base "" t))))))
   (map! :leader
         :desc "citar-open" "s SPC" #'citar-open))
+
+;;---------------------------------------------------------------------------
+;; Org Cite + biblatex-chicago (CMOS 17 Notes & Bibliography)
+(after! oc
+  (setf org-cite-global-bibliography
+        (list (concat +project-maria-dir+ "project-jerome.bib"))
+        org-cite-export-processors
+        '((latex biblatex)
+          (t basic))
+        org-cite-insert-processor 'citar
+        org-cite-follow-processor 'citar
+        org-cite-activate-processor 'citar))
+
+(after! ox-latex
+  ;; Per-document opt-in: #+LATEX_CLASS: chicago-nb
+  (add-to-list
+   'org-latex-classes
+   '("chicago-nb"
+     "\\documentclass[12pt]{article}
+[NO-DEFAULT-PACKAGES]
+\\usepackage{graphicx}
+\\usepackage{longtable}
+\\usepackage{wrapfig}
+\\usepackage{rotating}
+\\usepackage[normalem]{ulem}
+\\usepackage{amsmath}
+\\usepackage{amssymb}
+\\usepackage{capt-of}
+\\usepackage[margin=1in]{geometry}
+\\usepackage{setspace}\\doublespacing
+\\usepackage{fontspec}
+\\setmainfont{TeX Gyre Termes}
+\\usepackage{csquotes}
+\\usepackage[notes,backend=biber,babel=other,autolang=hyphen,strict]{biblatex-chicago}
+\\addbibresource{/home/ben/project-maria/project-jerome.bib}
+\\usepackage{hyperref}
+\\makeatletter
+\\let\\@course\\@empty
+\\newcommand{\\course}[1]{\\gdef\\@course{#1}}
+\\renewcommand{\\maketitle}{%
+  \\begin{titlepage}%
+    \\thispagestyle{empty}%
+    \\begin{center}
+      \\vspace*{0.28\\textheight}
+      \\@title\\par
+      \\vspace*{\\stretch{2}}
+      \\@author\\par
+      \\ifx\\@course\\@empty\\else\\vspace{1em}\\@course\\par\\fi
+      \\vspace{1em}\\@date\\par
+      \\vspace*{\\stretch{1}}
+    \\end{center}%
+  \\end{titlepage}}
+\\makeatother
+\\defbibheading{bibliography}[\\bibname]{%
+  \\clearpage
+  \\begin{center}\\textbf{#1}\\end{center}
+  \\markboth{#1}{#1}}
+[NO-PACKAGES]
+[EXTRA]"
+     ("\\section{%s}" . "\\section*{%s}")
+     ("\\subsection{%s}" . "\\subsection*{%s}")
+     ("\\subsubsection{%s}" . "\\subsubsection*{%s}")
+     ("\\paragraph{%s}" . "\\paragraph*{%s}")
+     ("\\subparagraph{%s}" . "\\subparagraph*{%s}")))
+
+  (defun bhw/org-latex-export-to-pdf-chicago-nb (orig-fn &rest args)
+    "Run lualatex+biber when the current org buffer uses LATEX_CLASS chicago-nb.
+The hook variant runs inside the export copy buffer, so a `setq-local'
+there is discarded before `org-latex-compile' reads the variable.
+A dynamic `let' binding here propagates through the whole export pipeline."
+    (if (save-excursion
+          (goto-char (point-min))
+          (re-search-forward
+           "^#\\+LATEX_CLASS:[ \t]+chicago-nb\\b" nil t))
+        (let ((org-latex-pdf-process
+               '("latexmk -f -pdflua -interaction=nonstopmode -output-directory=%o %f"
+                 "latexmk -c -output-directory=%o %f")))
+          (apply orig-fn args))
+      (apply orig-fn args)))
+  (advice-add 'org-latex-export-to-pdf :around
+              #'bhw/org-latex-export-to-pdf-chicago-nb))
 ;; Biblio Config:1 ends here
 
 ;; [[file:../../project-maria/blog/dotemacs.org::*Languages Config][Languages Config:1]]
@@ -2001,8 +2082,8 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
     (setq bhw/ement-sync-watchdog-timer nil)
     (when (and ement-auto-sync
                (memq session (mapcar #'cdr ement-sessions)))
-      ;; (message "Ement: sync watchdog firing; force-resyncing %s"
-      ;;          (ement-user-id (ement-session-user session)))
+      (message "Ement: sync watchdog firing; force-resyncing %s"
+               (ement-user-id (ement-session-user session)))
       ;; The forced delete-process below SIGKILLs the stalled sync; plz then
       ;; misreads signal 9 as curl exit 9 ("FTP access denied") and the dead
       ;; process's :else both signals that error and nulls `ement-syncs' for the
