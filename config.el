@@ -1740,6 +1740,8 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
         ;; mu4e-compose-signature
         mail-user-agent 'mu4e-user-agent
         mu4e-attachment-dir "/mnt/c/Users/bened/Downloads/"
+        ;; Work mail (bwang@archtoronto.org) is send-only and filed in Gmail, so
+        ;; sent/draft copies go to the Gmail folders like the other aliases.
         mu4e-drafts-folder "/[Gmail]/Drafts"
         mu4e-sent-folder "/[Gmail]/Sent Mail"
         mu4e-trash-folder "/[Gmail]/Trash"
@@ -1785,6 +1787,51 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
         mu4e-search-include-related nil)
 
   (add-hook 'mu4e-compose-pre-hook #'mu4e-compose-set-from-address-dwim)
+
+  ;; Doom's `+mu4e-set-from-address-h' (also on `mu4e-compose-pre-hook') pops a
+  ;; `completing-read'/consult prompt for the From: alias on new messages. We
+  ;; handle From: ourselves: `mu4e-compose-set-from-address-dwim' for
+  ;; replies/forwards and `bhw/mu4e-empty-from-for-new' for new mail. Drop the
+  ;; Doom hook so composing a new email doesn't prompt for the sender.
+  (remove-hook 'mu4e-compose-pre-hook #'+mu4e-set-from-address-h)
+
+  ;; --- Multi-account outgoing SMTP -----------------------------------------
+  ;; The base config (above) points smtpmail at Gmail. Before each send, pick
+  ;; the transport + auth mechanism from the From: address. Gmail uses the
+  ;; app-password in ~/.authinfo (LOGIN); archtoronto (M365) uses XOAUTH2 via
+  ;; the external token helper. Because `smtpmail-auth-supported' is global, we
+  ;; set it per-send so Gmail never tries XOAUTH2 (it has no token) and M365
+  ;; never tries LOGIN (basic auth may be disabled tenant-side).
+  (require 'smtpmail)
+
+  (cl-defmethod smtpmail-try-auth-method
+    (process (_mech (eql xoauth2)) user _password)
+    "Authenticate to SMTP with XOAUTH2, fetching a fresh M365 access token."
+    (let* ((token (string-trim
+                   (shell-command-to-string
+                    "/home/ben/.local/bin/uv run /home/ben/.config/oauth2/m365-token.py --token")))
+           (resp (base64-encode-string
+                  (concat "user=" user (string 1)
+                          "auth=Bearer " token (string 1) (string 1))
+                  t)))
+      (smtpmail-command-or-throw process (concat "AUTH XOAUTH2 " resp) 235)))
+
+  (defun bhw/set-smtp-from-identity ()
+    "Choose SMTP server + auth mechanism from the From: header before sending."
+    (let* ((from (message-field-value "from"))
+           (addr (downcase (or (cadr (mail-extract-address-components (or from ""))) ""))))
+      (if (string= addr "bwang@archtoronto.org")
+          (setq smtpmail-smtp-user      "bwang@archtoronto.org"
+                smtpmail-smtp-server    "smtp.office365.com"
+                smtpmail-smtp-service   587
+                smtpmail-stream-type    'starttls
+                smtpmail-auth-supported '(xoauth2))
+        (setq smtpmail-smtp-user      "benedicthanshenwang@gmail.com"
+              smtpmail-smtp-server    "smtp.gmail.com"
+              smtpmail-smtp-service   587
+              smtpmail-stream-type    'starttls
+              smtpmail-auth-supported '(login plain)))))
+  (add-hook 'message-send-mail-hook #'bhw/set-smtp-from-identity)
 
   ;; Leave the From: header empty for brand-new messages so the sending
   ;; identity must be chosen explicitly. Replies/forwards/edits keep the
@@ -2124,6 +2171,21 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
                 (ement-propertize (number-to-string h)
                   'face 'highlight))))))
 
+  ;; Related nil-handling bug: `ement-notify--room-unread-p' fails open when a
+  ;; room's `unread-notifications' slot is nil (absent from /sync).  It tests
+  ;; (equal 0 notification_count), which is nil for a nil count, so the room is
+  ;; reported "unread" and every message is logged to *Ement Notifications*.
+  ;; Muted rooms keep their count at 0, the server stops sending the field, and
+  ;; the slot stays nil -- exactly when this misfires, so server-side mutes
+  ;; (WhatsApp bridge / Element) never silence the buffer.  Treat absent counts
+  ;; as read; a genuine positive count still logs.
+  (define-advice ement-notify--room-unread-p
+      (:override (_event room _session) bhw/nil-counts-are-read)
+    (pcase-let* (((cl-struct ement-room unread-notifications) room)
+                 ((map notification_count highlight_count) unread-notifications))
+      (or (and (numberp notification_count) (> notification_count 0))
+          (and (numberp highlight_count)   (> highlight_count 0)))))
+
 (after! evil-collection
   (setq evil-collection-mode-list (delq 'ement evil-collection-mode-list))
   (map! :map ement-notifications-mode-map
@@ -2149,20 +2211,6 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
           transmission-info-mode
           transmission-peers-mode)))
 ;; Transmission Config:2 ends here
-
-;; [[file:../../project-maria/blog/dotemacs.org::*Shannon Key Logger Config][Shannon Key Logger Config:1]]
-;;---------------------------------------------------------------------------
-(add-to-list 'load-path "~/.config/emacs/.local/")
-;; Defer the keylogger (and its Java subprocess) off the startup critical path;
-;; 1s after Emacs goes idle is effectively immediate but doesn't block init.
-(run-with-idle-timer
- 1 nil
- (lambda ()
-   (require 'shannon-max)
-   (setq shannon-max-jar-file
-         (expand-file-name "~/.config/emacs/.local/target/emacskeys-0.1.0-SNAPSHOT-standalone.jar"))
-   (shannon-max-start-logger)))
-;; Shannon Key Logger Config:1 ends here
 
 ;; [[file:../../project-maria/blog/dotemacs.org::*Calendar Config][Calendar Config:1]]
 ;;---------------------------------------------------------------------------
@@ -2194,7 +2242,7 @@ E.g., \"We'll go on a ∀∃⇅ adventure\" ↦ \"We'll-go-on-a-adventure\"."
              ("longitude" . ,bhw/biome-toronto-longitude)
              ("latitude"  . ,bhw/biome-toronto-latitude)))))
   (map! :leader
-        :desc "biome" "om" #'meteorology-toronto-weather))
+        :desc "biome" "om" #'meteorology-detroit-weather))
 ;; Biome Config:1 ends here
 
 ;; [[file:../../project-maria/blog/dotemacs.org::*Casual Emacs Calc Config][Casual Emacs Calc Config:1]]
